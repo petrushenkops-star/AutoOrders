@@ -1,0 +1,36 @@
+name: Import and build AutoOrders
+on:
+  push:
+    paths:
+      - 'AutoOrders-0.1.0-source.zip'
+      - '.github/workflows/import-and-build.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract Android source
+        run: |
+          test -f AutoOrders-0.1.0-source.zip || { echo "Upload AutoOrders-0.1.0-source.zip to the repository root"; exit 1; }
+          unzip -q AutoOrders-0.1.0-source.zip -d extracted
+          cp -a extracted/AutoOrders/. .
+          test -f app/build.gradle.kts
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Test and build APK
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoOrders-v0.1.0-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
