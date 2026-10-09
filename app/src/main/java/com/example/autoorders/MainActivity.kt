@@ -1,0 +1,303 @@
+package com.example.autoorders
+
+import android.Manifest
+import android.app.AlarmManager
+import android.app.TimePickerDialog
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.net.Uri
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+class MainActivity : ComponentActivity() {
+    private lateinit var siteView: WebView
+    private lateinit var siteRunner: SiteRunner
+    private lateinit var store: LocalStore
+    private lateinit var alarms: AlarmScheduler
+    private var logUpdate by mutableStateOf(0)
+    private var runnerStatus by mutableStateOf("Автоматизация не запущена")
+    private var runnerActive by mutableStateOf(false)
+    private var notificationOrderId by mutableStateOf<String?>(null)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        notificationOrderId = intent.getStringExtra("order_id")
+        store = LocalStore(this)
+        alarms = AlarmScheduler(this)
+        ensureChannel(this)
+        siteView = WebView(this).apply {
+            settings.javaScriptEnabled = true // Required for the site's SPA and our DOM driver.
+            settings.domStorageEnabled = true
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            settings.setSupportMultipleWindows(false)
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val u = request?.url ?: return true
+                    return u.scheme != "https" || u.host != "lxcompintb.com"
+                }
+            }
+            loadUrl("https://lxcompintb.com/ru")
+        }
+        siteRunner = SiteRunner(siteView, { runnerStatus = it }, { success, detail ->
+            activeOrderId?.let { store.updateOrder(it, if (success) OrderStatus.SUCCESS else OrderStatus.ERROR, detail) }
+            activeOrderId = null
+            runnerActive = false
+            logUpdate++
+        })
+        setContent { MaterialTheme { AutoOrdersApp() } }
+    }
+
+    private var activeOrderId: String? = null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        notificationOrderId = intent.getStringExtra("order_id")
+    }
+
+    private fun pickTime(day: DayOfWeek, current: Slot?, onPicked: (Slot) -> Unit) {
+        val time = current?.time ?: LocalTime.now()
+        TimePickerDialog(this, { _, hour, minute ->
+            onPicked(if (current == null) Slot(day = day, time = LocalTime.of(hour, minute))
+                else current.copy(time = LocalTime.of(hour, minute)))
+        }, time.hour, time.minute, true).show()
+    }
+
+    @Composable
+    private fun AutoOrdersApp() {
+        var tab by remember { mutableIntStateOf(if (notificationOrderId != null) 1 else 0) }
+        var slots by remember { mutableStateOf(store.slots()) }
+        var orders by remember { mutableStateOf(store.orders()) }
+        var selectedOrderId by remember { mutableStateOf<String?>(notificationOrderId) }
+        var code by remember { mutableStateOf("") }
+        var live by remember { mutableStateOf(false) }
+        var resumeCounter by remember { mutableIntStateOf(0) }
+        val launchNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        LaunchedEffect(notificationOrderId) {
+            if (notificationOrderId != null) {
+                selectedOrderId = notificationOrderId
+                tab = 1
+            }
+        }
+        val lifecycle = LocalLifecycleOwner.current
+        DisposableEffect(lifecycle) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    orders = store.orders()
+                    slots = store.slots()
+                    resumeCounter++
+                }
+            }
+            lifecycle.lifecycle.addObserver(observer)
+            onDispose { lifecycle.lifecycle.removeObserver(observer) }
+        }
+        LaunchedEffect(logUpdate) { orders = store.orders() }
+        val saveSlots: (List<Slot>) -> Unit = { new ->
+            store.putSlots(new)
+            alarms.refresh(slots, new)
+            slots = store.slots()
+        }
+        val pending = orders.filter { it.status == OrderStatus.WAITING_CODE }
+        val selected = pending.firstOrNull { it.id == selectedOrderId } ?: pending.firstOrNull()
+        val exactAvailable = remember(slots, resumeCounter) {
+            Build.VERSION.SDK_INT < 31 || (getSystemService(ALARM_SERVICE) as AlarmManager).canScheduleExactAlarms()
+        }
+        Scaffold(
+            topBar = {
+                Surface(tonalElevation = 3.dp) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Версия 0.1.0 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            bottomBar = {
+                NavigationBar {
+                    listOf("Расписание", "Заказы", "Сайт").forEachIndexed { index, name ->
+                        NavigationBarItem(selected = tab == index, onClick = { tab = index },
+                            icon = { Text(when (index) { 0 -> "▦"; 1 -> "◷"; else -> "◎" }) }, label = { Text(name) })
+                    }
+                }
+            }
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                when (tab) {
+                    0 -> {
+                        Text("Недельное расписание", style = MaterialTheme.typography.titleMedium)
+                        Text("Добавь любое количество заказов на каждый день. Время местное, по настройкам телефона.", style = MaterialTheme.typography.bodySmall)
+                        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            OutlinedButton(onClick = { launchNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
+                                Text("Разрешить уведомления")
+                            }
+                        }
+                        if (!exactAvailable) {
+                            Text("Точное время срабатывания не разрешено. Уведомления могут задерживаться.", color = MaterialTheme.colorScheme.error)
+                            OutlinedButton(onClick = {
+                                startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                    Uri.parse("package:$packageName")))
+                            }) { Text("Разрешить точное расписание") }
+                        }
+                        DayOfWeek.entries.forEach { day ->
+                            val daySlots = slots.filter { it.day == day }.sortedBy { it.time }
+                            ElevatedCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(dayLabel(day), Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                                        Text("${daySlots.count { it.enabled }} заказ(ов)", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    daySlots.forEach { slot ->
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            TextButton(onClick = { pickTime(day, slot) { edited ->
+                                                saveSlots(slots.map { if (it.id == slot.id) edited else it })
+                                            } }) { Text(slot.time.format(DateTimeFormatter.ofPattern("HH:mm"))) }
+                                            Spacer(Modifier.weight(1f))
+                                            Switch(checked = slot.enabled, onCheckedChange = { newEnabled ->
+                                                saveSlots(slots.map { if (it.id == slot.id) it.copy(enabled = newEnabled) else it })
+                                            })
+                                            TextButton(onClick = { saveSlots(slots.filterNot { it.id == slot.id }) }) { Text("Удалить") }
+                                        }
+                                    }
+                                    OutlinedButton(onClick = { pickTime(day, null) { added -> saveSlots(slots + added) } }) {
+                                        Text("+ Добавить время")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    1 -> {
+                        Text("Заказы", style = MaterialTheme.typography.titleMedium)
+                        Text("В назначенное время появится уведомление. Для каждого заказа вводи новый цифровой код.", style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = {
+                            val entry = OrderEntry(slotId = null)
+                            store.addOrder(entry)
+                            orders = store.orders()
+                            selectedOrderId = entry.id
+                        }) { Text("+ Создать тестовый заказ") }
+                        if (selected != null) {
+                            ElevatedCard {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text("Ожидает цифровой код", fontWeight = FontWeight.SemiBold)
+                                    if (pending.size > 1) Text("Заказов в ожидании: ${pending.size}. Обрабатывай их по одному.")
+                                    Text(timeText(selected.createdAtMillis), style = MaterialTheme.typography.labelMedium)
+                                    OutlinedTextField(
+                                        value = code,
+                                        onValueChange = { v -> if (v.length <= 20 && v.all(Char::isDigit)) code = v },
+                                        label = { Text("Новый цифровой код") },
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Тестовый режим", Modifier.weight(1f))
+                                        Switch(checked = !live, enabled = !runnerActive, onCheckedChange = { live = !it })
+                                    }
+                                    if (live) Text("ЭКСПЕРИМЕНТАЛЬНО: при запуске будет подтверждён реальный финансовый заказ на сайте. Механизм ещё не проверен в личном кабинете.", color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall)
+                                    Button(onClick = {
+                                        val id = selected.id
+                                        val submittedCode = code
+                                        code = ""
+                                        if (!live) {
+                                            store.updateOrder(id, OrderStatus.TEST_SUCCESS, "Тестовый сценарий завершён без обращения к сайту")
+                                            orders = store.orders()
+                                            selectedOrderId = null
+                                        } else {
+                                            activeOrderId = id
+                                            tab = 2
+                                            runnerActive = true
+                                            siteRunner.start(submittedCode)
+                                        }
+                                    }, enabled = code.isNotBlank() && !runnerActive, modifier = Modifier.fillMaxWidth()) {
+                                        Text(if (live) "Выполнить заказ на сайте" else "Проверить тестовый сценарий")
+                                    }
+                                    TextButton(onClick = {
+                                        store.updateOrder(selected.id, OrderStatus.MISSED, "Пропущено вручную")
+                                        orders = store.orders()
+                                        selectedOrderId = null
+                                        code = ""
+                                    }, enabled = !runnerActive) { Text("Пропустить этот заказ") }
+                                }
+                            }
+                        } else Text("Сейчас нет заказов, ожидающих кода.")
+                        Text("История", style = MaterialTheme.typography.titleMedium)
+                        orders.take(40).forEach { entry ->
+                            HorizontalDivider()
+                            Column {
+                                Text("${timeText(entry.createdAtMillis)} — ${statusLabel(entry.status)}", fontWeight = FontWeight.Medium)
+                                if (entry.details.isNotBlank()) Text(entry.details, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    2 -> {
+                        Text("Сайт и автоматизация", style = MaterialTheme.typography.titleMedium)
+                        Text("Первый вход в личный кабинет потребуется выполнить вручную. Встроенный браузер не использует сессию Chrome.", style = MaterialTheme.typography.bodySmall)
+                        if (runnerActive) {
+                            Button(onClick = { siteRunner.stop() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                                Text("СТОП — прекратить действия")
+                            }
+                        }
+                        Text(runnerStatus, style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { siteView.reload() }, enabled = !runnerActive) { Text("Обновить") }
+                            OutlinedButton(onClick = { siteView.loadUrl("https://lxcompintb.com/ru") }, enabled = !runnerActive) { Text("Главная") }
+                        }
+                        AndroidView(factory = { context ->
+                            (siteView.parent as? android.view.ViewGroup)?.removeView(siteView)
+                            siteView
+                        }, modifier = Modifier.fillMaxWidth().height(570.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun timeText(epoch: Long): String =
+        DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(epoch))
+
+    private fun statusLabel(s: OrderStatus) = when (s) {
+        OrderStatus.WAITING_CODE -> "Ожидание кода"
+        OrderStatus.TEST_SUCCESS -> "Тест выполнен"
+        OrderStatus.SUCCESS -> "Сайт сообщил об успехе"
+        OrderStatus.ERROR -> "Ошибка / неизвестный результат"
+        OrderStatus.MISSED -> "Пропущен"
+    }
+
+    override fun onDestroy() {
+        if (siteRunner.isActive()) siteRunner.stop()
+        siteView.destroy()
+        super.onDestroy()
+    }
+}
