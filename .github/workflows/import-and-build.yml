@@ -45,11 +45,11 @@ jobs:
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          TAG="v0.1.1-test"
-          cp "$APK" "AutoOrders-0.1.1-debug.apk"
-          ASSET="AutoOrders-0.1.1-debug.apk"
+          TAG="v0.1.2-test"
+          cp "$APK" "AutoOrders-0.1.2-debug.apk"
+          ASSET="AutoOrders-0.1.2-debug.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.1 — исправление отображения и диагностика сайта" --notes "Исправлено перекрытие заголовка строкой состояния. Добавлена диагностика WebView и открытие сайта в системном браузере. Реальные финансовые заказы через автоматизацию не проверены; тестовый режим включён по умолчанию." --prerelease
+            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.2 — запуск сайта в Google Chrome" --notes "Открытие сайта строго в Google Chrome, независимо от браузера по умолчанию. Если Chrome отсутствует, показано сообщение. Реальные финансовые заказы через автоматизацию не проверены; тестовый режим включён по умолчанию." --prerelease
           fi
