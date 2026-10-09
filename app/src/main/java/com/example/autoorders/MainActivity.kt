@@ -13,6 +13,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var alarms: AlarmScheduler
     private var logUpdate by mutableStateOf(0)
     private var runnerStatus by mutableStateOf("Автоматизация не запущена")
+    private var siteError by mutableStateOf<String?>(null)
     private var runnerActive by mutableStateOf(false)
     private var notificationOrderId by mutableStateOf<String?>(null)
 
@@ -64,7 +66,23 @@ class MainActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val u = request?.url ?: return true
-                    return u.scheme != "https" || u.host != "lxcompintb.com"
+                    val host = u.host.orEmpty()
+                    val permitted = u.scheme == "https" &&
+                        (host == "lxcompintb.com" || host.endsWith(".lxcompintb.com"))
+                    if (!permitted && request?.isForMainFrame == true) {
+                        siteError = "Переход за пределы lxcompintb.com не выполняется во встроенном браузере."
+                    }
+                    return !permitted
+                }
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    super.onReceivedError(view, request, error)
+                    if (request?.isForMainFrame == true) {
+                        siteError = "Ошибка загрузки: ${error?.description ?: "нет описания"} (код ${error?.errorCode ?: "?"})"
+                    }
                 }
             }
             loadUrl("https://lxcompintb.com/ru")
@@ -135,7 +153,7 @@ class MainActivity : ComponentActivity() {
         }
         Scaffold(
             topBar = {
-                Surface(tonalElevation = 3.dp) {
+                Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text("Версия 0.1.0 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
@@ -240,7 +258,7 @@ class MainActivity : ComponentActivity() {
                                             runnerActive = true
                                             siteRunner.start(submittedCode)
                                         }
-                                    }, enabled = code.isNotBlank() && !runnerActive, modifier = Modifier.fillMaxWidth()) {
+                                    }, enabled = code.isNotBlank() && !runnerActive && (!live || siteError == null), modifier = Modifier.fillMaxWidth()) {
                                         Text(if (live) "Выполнить заказ на сайте" else "Проверить тестовый сценарий")
                                     }
                                     TextButton(onClick = {
@@ -270,10 +288,31 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Text(runnerStatus, style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { siteView.reload() }, enabled = !runnerActive) { Text("Обновить") }
-                            OutlinedButton(onClick = { siteView.loadUrl("https://lxcompintb.com/ru") }, enabled = !runnerActive) { Text("Главная") }
+                        if (siteError != null) {
+                            Text(
+                                siteError ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                "Проверь, открывается ли сайт в обычном браузере. " +
+                                "Если он работает только там, автоматизация через WebView не сможет им управлять.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                siteError = null
+                                siteView.reload()
+                            }, enabled = !runnerActive) { Text("Обновить") }
+                            OutlinedButton(onClick = {
+                                siteError = null
+                                siteView.loadUrl("https://lxcompintb.com/ru")
+                            }, enabled = !runnerActive) { Text("Главная") }
+                        }
+                        OutlinedButton(onClick = {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://lxcompintb.com/ru")))
+                        }) { Text("Открыть сайт в браузере") }
                         AndroidView(factory = { context ->
                             (siteView.parent as? android.view.ViewGroup)?.removeView(siteView)
                             siteView
