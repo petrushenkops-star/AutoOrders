@@ -2,7 +2,11 @@ name: Import and build AutoOrders
 on:
   push:
     paths:
-      - 'AutoOrders-0.1.0-source.zip'
+      - 'app/**'
+      - 'tests/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
       - '.github/workflows/import-and-build.yml'
   workflow_dispatch:
 jobs:
@@ -12,21 +16,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Extract Android source
+      - name: Verify checked-in project source
         run: |
-          test -f AutoOrders-0.1.0-source.zip || { echo "Upload AutoOrders-0.1.0-source.zip to the repository root"; exit 1; }
-          unzip -q AutoOrders-0.1.0-source.zip -d extracted
-          cp -a extracted/AutoOrders/. .
           test -f app/build.gradle.kts
-      - name: Commit extracted sources for maintainable updates
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .gitignore app tests build.gradle.kts settings.gradle.kts gradle.properties
-          if ! git diff --cached --quiet; then
-            git commit -m "Import Android project source from v0.1.0 archive"
-            git push origin HEAD:main
-          fi
+          test -f app/src/main/java/com/example/autoorders/MainActivity.kt
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -42,6 +35,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Test browser driver offline
+        run: node tests/driver-smoke.js
       - name: Test and build APK
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - name: Publish test APK in GitHub Releases
@@ -50,10 +45,11 @@ jobs:
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          TAG="v0.1.0-test"
-          ASSET="$APK#AutoOrders-0.1.0-debug.apk"
+          TAG="v0.1.1-test"
+          cp "$APK" "AutoOrders-0.1.1-debug.apk"
+          ASSET="AutoOrders-0.1.1-debug.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.0 — тестовая версия" --notes "Первая тестовая сборка Android. Автоматическое подтверждение реальных финансовых заказов не проверено на сайте. По умолчанию включён тестовый режим." --prerelease
+            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.1 — исправление отображения и диагностика сайта" --notes "Исправлено перекрытие заголовка строкой состояния. Добавлена диагностика WebView и открытие сайта в системном браузере. Реальные финансовые заказы через автоматизацию не проверены; тестовый режим включён по умолчанию." --prerelease
           fi
