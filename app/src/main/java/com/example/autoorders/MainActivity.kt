@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.AlarmManager
 import android.app.TimePickerDialog
 import android.content.Intent
+import android.content.ActivityNotFoundException
+import android.widget.Toast
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -311,8 +313,22 @@ class MainActivity : ComponentActivity() {
                             }, enabled = !runnerActive) { Text("Главная") }
                         }
                         OutlinedButton(onClick = {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://lxcompintb.com/ru")))
-                        }) { Text("Открыть сайт в браузере") }
+                            val chromeIntent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://lxcompintb.com/ru")
+                            ).apply {
+                                setPackage("com.android.chrome")
+                            }
+                            try {
+                                startActivity(chromeIntent)
+                            } catch (_: ActivityNotFoundException) {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Google Chrome не установлен. Установите Chrome, чтобы открыть сайт.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }) { Text("Открыть сайт в Chrome") }
                         AndroidView(factory = { context ->
                             (siteView.parent as? android.view.ViewGroup)?.removeView(siteView)
                             siteView
