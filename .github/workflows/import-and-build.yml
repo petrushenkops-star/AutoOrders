@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Extract Android source
@@ -35,9 +35,16 @@ jobs:
           gradle-version: '8.9'
       - name: Test and build APK
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: AutoOrders-v0.1.0-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+      - name: Publish test APK in GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          TAG="v0.1.0-test"
+          ASSET="$APK#AutoOrders-0.1.0-debug.apk"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --clobber
+          else
+            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.0 — тестовая версия" --notes "Первая тестовая сборка Android. Автоматическое подтверждение реальных финансовых заказов не проверено на сайте. По умолчанию включён тестовый режим." --prerelease
+          fi
