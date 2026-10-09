@@ -16,6 +16,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceError
+import org.json.JSONObject
+import org.json.JSONTokener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -51,6 +53,7 @@ class MainActivity : ComponentActivity() {
     private var logUpdate by mutableStateOf(0)
     private var runnerStatus by mutableStateOf("Автоматизация не запущена")
     private var siteError by mutableStateOf<String?>(null)
+    private var siteDiagnostics by mutableStateOf("Диагностика ещё не выполнялась")
     private var runnerActive by mutableStateOf(false)
     private var notificationOrderId by mutableStateOf<String?>(null)
 
@@ -96,6 +99,50 @@ class MainActivity : ComponentActivity() {
             logUpdate++
         })
         setContent { MaterialTheme { AutoOrdersApp() } }
+    }
+
+    /**
+     * Read-only DOM inspection: no clicks, code values, cookies, or account data are collected.
+     * Results are shown locally on the device and are never uploaded.
+     */
+    private fun inspectSite() {
+        val address = siteView.url.orEmpty()
+        val host = Uri.parse(address).host.orEmpty()
+        if (!(host == "lxcompintb.com" || host.endsWith(".lxcompintb.com")) || !address.startsWith("https://")) {
+            siteDiagnostics = "Сначала открой сайт lxcompintb.com во встроенном браузере."
+            return
+        }
+        siteDiagnostics = "Проверка элементов страницы…"
+        val js = assets.open("page-inspector.js").bufferedReader().use { it.readText() }
+        siteView.evaluateJavascript(js) { raw ->
+            siteDiagnostics = try {
+                val decoded = JSONTokener(raw).nextValue() as String
+                val result = JSONObject(decoded)
+                if (result.optString("status") != "ok") {
+                    "Не удалось проверить страницу. Перейди в раздел «Быстрое копирование» и попробуй снова."
+                } else {
+                    buildString {
+                        append("Распознанный экран: ")
+                        append(result.optString("pageStage", "не определён"))
+                        append("\nКнопок «Быстрое копирование»: ")
+                        append(result.optInt("copyButtons", 0))
+                        append("\nПоле цифрового кода: ")
+                        append(if (result.optBoolean("codeInput")) "найдено" else "не найдено")
+                        append("\nКнопок «Отправлять»: ")
+                        append(result.optInt("sendButtons", 0))
+                        append("\nНадпись «Сумма заказа»: ")
+                        append(if (result.optBoolean("amountLabel")) "есть" else "нет")
+                        append("\nКнопок «Подтв.»: ")
+                        append(result.optInt("confirmButtons", 0))
+                        append("\nСообщение об успехе: ")
+                        append(if (result.optBoolean("successLabel")) "есть" else "нет")
+                        append("\nПроверка ничего не нажимает и не отправляет.")
+                    }
+                }
+            } catch (_: Exception) {
+                "Не удалось получить результат проверки. Обнови страницу и повтори."
+            }
+        }
     }
 
     private var activeOrderId: String? = null
@@ -158,7 +205,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.0 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия 0.1.3 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -329,6 +376,11 @@ class MainActivity : ComponentActivity() {
                                 ).show()
                             }
                         }) { Text("Открыть сайт в Chrome") }
+                        OutlinedButton(
+                            onClick = { inspectSite() },
+                            enabled = !runnerActive
+                        ) { Text("Проверить элементы страницы") }
+                        Text(siteDiagnostics, style = MaterialTheme.typography.bodySmall)
                         AndroidView(factory = { context ->
                             (siteView.parent as? android.view.ViewGroup)?.removeView(siteView)
                             siteView
