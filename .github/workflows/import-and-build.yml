@@ -47,11 +47,11 @@ jobs:
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          TAG="v0.1.3-test"
-          cp "$APK" "AutoOrders-0.1.3-debug.apk"
-          ASSET="AutoOrders-0.1.3-debug.apk"
+          TAG="v0.1.4-test"
+          cp "$APK" "AutoOrders-0.1.4-debug.apk"
+          ASSET="AutoOrders-0.1.4-debug.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.3 — проверка элементов страницы" --notes "Добавлена безопасная диагностика элементов раздела «Быстрое копирование», которая ничего не нажимает и не отправляет. Реальные финансовые заказы через автоматизацию не проверены; тестовый режим включён по умолчанию." --prerelease
+            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.4 — полноэкранный режим сайта" --notes "Добавлен полноэкранный WebView с сохранением текущего экземпляра браузера для просмотра окна подтверждения. Никаких изменений автоматического подтверждения финансовых заказов. Реальные заказы не проверены; тестовый режим включён по умолчанию." --prerelease
           fi

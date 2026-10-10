@@ -20,6 +20,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -169,6 +170,8 @@ class MainActivity : ComponentActivity() {
         var selectedOrderId by remember { mutableStateOf<String?>(notificationOrderId) }
         var code by remember { mutableStateOf("") }
         var live by remember { mutableStateOf(false) }
+        var fullScreenSite by remember { mutableStateOf(false) }
+        BackHandler(enabled = fullScreenSite) { fullScreenSite = false }
         var resumeCounter by remember { mutableIntStateOf(0) }
         val launchNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         LaunchedEffect(notificationOrderId) {
@@ -200,12 +203,41 @@ class MainActivity : ComponentActivity() {
         val exactAvailable = remember(slots, resumeCounter) {
             Build.VERSION.SDK_INT < 31 || (getSystemService(ALARM_SERVICE) as AlarmManager).canScheduleExactAlarms()
         }
+        if (fullScreenSite) {
+            Column(
+                modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+            ) {
+                Surface(tonalElevation = 3.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        TextButton(onClick = { fullScreenSite = false }) {
+                            Text("← В приложение")
+                        }
+                        Text("Сайт", style = MaterialTheme.typography.titleMedium)
+                        TextButton(
+                            onClick = { inspectSite() },
+                            enabled = !runnerActive
+                        ) { Text("Проверить") }
+                    }
+                }
+                AndroidView(
+                    factory = {
+                        (siteView.parent as? android.view.ViewGroup)?.removeView(siteView)
+                        siteView
+                    },
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+            }
+        } else {
         Scaffold(
             topBar = {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.3 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия 0.1.4 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -381,6 +413,10 @@ class MainActivity : ComponentActivity() {
                             enabled = !runnerActive
                         ) { Text("Проверить элементы страницы") }
                         Text(siteDiagnostics, style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(
+                            onClick = { fullScreenSite = true },
+                            enabled = !runnerActive
+                        ) { Text("Развернуть сайт на весь экран") }
                         AndroidView(factory = { context ->
                             (siteView.parent as? android.view.ViewGroup)?.removeView(siteView)
                             siteView
@@ -388,6 +424,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
         }
     }
 
