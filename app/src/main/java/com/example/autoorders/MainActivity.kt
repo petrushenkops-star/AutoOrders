@@ -169,6 +169,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+    /**
+     * Manual viewport adjustment only. Never presses or submits a financial order.
+     * Uses the existing WebView session; no account details or codes leave the device.
+     */
+    private fun revealConfirmationDialog() {
+        val address = siteView.url.orEmpty()
+        val host = Uri.parse(address).host.orEmpty()
+        if (!address.startsWith("https://") ||
+            !(host == "lxcompintb.com" || host.endsWith(".lxcompintb.com"))) {
+            siteDiagnostics = "Сначала открой lxcompintb.com во встроенном браузере."
+            showInspectionDialog = true
+            return
+        }
+        siteDiagnostics = "Попытка показать окно подтверждения…"
+        val js = assets.open("reveal-confirmation.js").bufferedReader().use { it.readText() }
+        siteView.evaluateJavascript(js) { raw ->
+            siteDiagnostics = try {
+                val decoded = JSONTokener(raw).nextValue() as String
+                val result = JSONObject(decoded)
+                when (result.optString("status")) {
+                    "shifted" -> "Окно перемещено в видимую область. " +
+                        "Закрой этот отчёт и проверь, появилась ли кнопка «Подтв.». " +
+                        "Никаких нажатий и отправок не выполнялось."
+                    "already_visible" -> "Кнопка уже находится в видимой области. " +
+                        "Закрой отчёт, чтобы проверить её."
+                    "not_found" -> "Кнопка «Подтв.» не найдена однозначно. " +
+                        "Открой окно подтверждения на сайте и повтори."
+                    "no_dialog" -> "Не обнаружено окно подтверждения, которое можно безопасно переместить."
+                    "failed" -> "Не удалось вывести кнопку в видимую область. " +
+                        "Не подтверждай и не повторяй заказ, пока не проверен его статус."
+                    else -> "Нельзя изменить положение окна на этой странице."
+                }
+            } catch (_: Exception) {
+                "Не удалось обработать ответ сайта. Никаких заказов не отправлено."
+            }
+            showInspectionDialog = true
+        }
+    }
+
     private var activeOrderId: String? = null
 
     override fun onNewIntent(intent: Intent) {
@@ -251,9 +291,12 @@ class MainActivity : ComponentActivity() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         TextButton(onClick = { fullScreenSite = false }) {
-                            Text("← В приложение")
+                            Text("← Назад")
                         }
-                        Text("Сайт", style = MaterialTheme.typography.titleMedium)
+                        TextButton(
+                            onClick = { revealConfirmationDialog() },
+                            enabled = !runnerActive
+                        ) { Text("Показать окно") }
                         TextButton(
                             onClick = { inspectSite() },
                             enabled = !runnerActive
@@ -274,7 +317,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.5 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия 0.1.6 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
