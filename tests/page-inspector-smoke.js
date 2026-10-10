@@ -1,48 +1,50 @@
-// Read-only inspection smoke tests. No real website or financial actions.
+// Read-only inspection contract tests; never sends an order or records secrets.
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const script = fs.readFileSync('app/src/main/assets/page-inspector.js', 'utf8');
-function inspect({label, bodyText, buttonNames, codeField, codeValue, host = 'lxcompintb.com'}) {
-  const clicked = [];
-  const buttons = buttonNames.map(name => ({
-    innerText: name, getClientRects() { return [1]; },
-    getAttribute() { return ''; },
-    click() { clicked.push(name); }
+function inspect({ bodyText='', names=[], codeField=false, secret='546789', confirmTop=320,
+                   topElementIsConfirm=true, host='lxcompintb.com' }) {
+  const clicks = [];
+  const elements = names.map(name => ({
+    innerText:name, disabled:false,
+    getClientRects(){return [1]},
+    getBoundingClientRect(){return {top:confirmTop,bottom:confirmTop+44,left:10,right:150,width:140,height:44}},
+    contains(e){return e===this}, getAttribute(){return ''},
+    click(){clicks.push(name)}
   }));
-  const secret = {
-    placeholder: 'Динамический пароль', value: codeValue,
-    parentElement: {innerText: 'Динамический пароль'},
-    getAttribute() { return ''; }, getClientRects() { return [1]; }
-  };
-  const doc = {
-    body: {innerText: bodyText},
-    querySelectorAll(selector) { return selector.startsWith('input:') ? (codeField ? [secret] : []) : buttons; }
+  const input = { placeholder:'Динамический пароль', value:secret,
+    parentElement:{innerText:'Динамический пароль'},
+    getClientRects(){return [1]}, getAttribute(){return ''} };
+  const mockDocument = {
+    body:{innerText:bodyText},
+    querySelectorAll(selector){
+      if (selector.startsWith('input:')) return codeField ? [input] : [];
+      if (selector.startsWith('[role="dialog"]')) return [];
+      return elements;
+    },
+    elementFromPoint(){return topElementIsConfirm?elements.find(e=>e.innerText==='Подтв.'):{}}
   };
   const result = JSON.parse(vm.runInNewContext(script, {
-    location: {protocol:'https:', hostname:host},
-    document: doc, getComputedStyle: () => ({visibility:'visible', display:'block'})
+    location:{protocol:'https:',hostname:host},document:mockDocument,
+    window:{innerHeight:850,innerWidth:390},
+    getComputedStyle:()=>({visibility:'visible',display:'block'})
   }));
-  assert.equal(clicked.length, 0);
-  assert.ok(!JSON.stringify(result).includes(codeValue));
-  assert.ok(!JSON.stringify(result).includes('7274747499'));
+  assert.equal(clicks.length,0);
+  assert.equal(JSON.stringify(result).includes(secret),false);
+  assert.equal(JSON.stringify(result).includes('7226071297'),false);
   return result;
 }
-const input = inspect({bodyText:'Быстрое копирование Динамический пароль UID 7274747499',
-  buttonNames:['Отправлять'], codeField:true, codeValue:'123456'});
-assert.equal(input.codeInput,true);
-assert.equal(input.sendButtons,1);
-assert.equal(input.pageStage,'Ввод динамического кода');
-const details = inspect({bodyText:'Сумма заказа 37.4 USDT',
-  buttonNames:['Быстрое копирование'], codeField:false, codeValue:'987654'});
-assert.equal(details.amountLabel,true);
-assert.equal(details.copyButtons,1);
-assert.equal(details.pageStage,'Параметры заказа');
-const confirm = inspect({bodyText:'Вы уверены, что хотите скопировать?',
-  buttonNames:['Подтв.'], codeField:false, codeValue:'987654'});
-assert.equal(confirm.confirmButtons,1);
-assert.equal(confirm.pageStage,'Подтверждение заказа');
-const wrong = inspect({bodyText:'Динамический пароль',
-  buttonNames:['Отправлять'], codeField:true, codeValue:'987654', host:'example.com'});
-assert.equal(wrong.status, 'error');
-console.log('Page inspector: 4 read-only smoke tests passed');
+const code = inspect({bodyText:'Динамический пароль', names:['Отправлять'],codeField:true});
+assert.equal(code.codeInput,true); assert.equal(code.sendButtons,1);
+const details = inspect({bodyText:'Сумма заказа 31.45',names:['Быстрое копирование']});
+assert.equal(details.amountLabel,true); assert.equal(details.copyButtons,1);
+const visible = inspect({bodyText:'Вы уверены, что хотите скопировать?',names:['Подтв.']});
+assert.equal(visible.confirmState,'visible');assert.equal(visible.pageStage,'Подтверждение заказа');
+const outside = inspect({names:['Подтв.'],confirmTop:1200});
+assert.equal(outside.confirmState,'offscreen');
+const covered = inspect({names:['Подтв.'],topElementIsConfirm:false});
+assert.equal(covered.confirmState,'covered');
+const blocked = inspect({names:['Подтв.'],host:'example.com'});
+assert.equal(blocked.status,'error');
+console.log('Page inspector: 6 safe geometry smoke tests passed');

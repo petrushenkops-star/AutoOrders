@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
     private var runnerStatus by mutableStateOf("Автоматизация не запущена")
     private var siteError by mutableStateOf<String?>(null)
     private var siteDiagnostics by mutableStateOf("Диагностика ещё не выполнялась")
+    private var showInspectionDialog by mutableStateOf(false)
     private var runnerActive by mutableStateOf(false)
     private var notificationOrderId by mutableStateOf<String?>(null)
 
@@ -135,6 +136,27 @@ class MainActivity : ComponentActivity() {
                         append(if (result.optBoolean("amountLabel")) "есть" else "нет")
                         append("\nКнопок «Подтв.»: ")
                         append(result.optInt("confirmButtons", 0))
+                        append("\nПоложение кнопки: ")
+                        append(when (result.optString("confirmState")) {
+                            "visible" -> "на экране, доступна"
+                            "offscreen" -> "за границами экрана"
+                            "covered" -> "на экране, но перекрыта другим элементом"
+                            "disabled" -> "отключена"
+                            "not_found" -> "не найдена"
+                            else -> "не удалось определить"
+                        })
+                        if (result.optString("confirmState") != "not_found") {
+                            append("\nВысота области сайта: ")
+                            append(result.optInt("viewportHeight"))
+                            append(" px")
+                            append("\nКнопка: верх ")
+                            append(result.optInt("confirmTop"))
+                            append(" px, низ ")
+                            append(result.optInt("confirmBottom"))
+                            append(" px")
+                        }
+                        append("\nЭлементов окна подтверждения: ")
+                        append(result.optInt("dialogElements", 0))
                         append("\nСообщение об успехе: ")
                         append(if (result.optBoolean("successLabel")) "есть" else "нет")
                         append("\nПроверка ничего не нажимает и не отправляет.")
@@ -143,6 +165,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) {
                 "Не удалось получить результат проверки. Обнови страницу и повтори."
             }
+            showInspectionDialog = true
         }
     }
 
@@ -203,6 +226,20 @@ class MainActivity : ComponentActivity() {
         val exactAvailable = remember(slots, resumeCounter) {
             Build.VERSION.SDK_INT < 31 || (getSystemService(ALARM_SERVICE) as AlarmManager).canScheduleExactAlarms()
         }
+        if (showInspectionDialog) {
+            AlertDialog(
+                onDismissRequest = { showInspectionDialog = false },
+                title = { Text("Диагностика окна") },
+                text = {
+                    Column(
+                        modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())
+                    ) { Text(siteDiagnostics) }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showInspectionDialog = false }) { Text("Закрыть") }
+                }
+            )
+        }
         if (fullScreenSite) {
             Column(
                 modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
@@ -237,7 +274,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.4 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия 0.1.5 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
