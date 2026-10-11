@@ -1,3 +1,10 @@
+// Persistent signing credentials are supplied from a GitHub Actions secret.
+val signingKeystorePath = System.getenv("AUTOORDERS_SIGNING_KEYSTORE")
+val signingPassword = System.getenv("AUTOORDERS_SIGNING_PASSWORD")
+val signingAlias = System.getenv("AUTOORDERS_SIGNING_ALIAS")
+val hasPersistentSigning = !signingKeystorePath.isNullOrBlank() &&
+    !signingPassword.isNullOrBlank() && !signingAlias.isNullOrBlank()
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -10,11 +17,29 @@ android {
         applicationId = "com.example.autoorders"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.1.10"
+        versionCode = 12
+        versionName = "0.1.11"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    signingConfigs {
+        if (hasPersistentSigning) {
+            create("persistentRelease") {
+                storeFile = file(signingKeystorePath!!)
+                storePassword = signingPassword!!
+                keyAlias = signingAlias!!
+                keyPassword = signingPassword
+                storeType = "pkcs12"
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (hasPersistentSigning) {
+                signingConfig = signingConfigs.getByName("persistentRelease")
+            }
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -1,4 +1,4 @@
-name: Import and build AutoOrders
+name: Build AutoOrders
 on:
   push:
     paths:
@@ -10,13 +10,13 @@ on:
       - '.github/workflows/import-and-build.yml'
   workflow_dispatch:
 jobs:
-  build:
+  android:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Verify checked-in project source
+      - name: Verify project sources
         run: |
           test -f app/build.gradle.kts
           test -f app/src/main/java/com/example/autoorders/MainActivity.kt
@@ -24,35 +24,64 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android SDK platform without obsolete tools
+      - name: Install Android SDK platform
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME}"
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
           test -n "$SDKMANAGER" && test -x "$SDKMANAGER"
-          echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Test browser driver offline
+      - name: Offline browser driver tests
         run: |
           node tests/driver-smoke.js
           node tests/page-inspector-smoke.js
           node tests/reveal-confirmation-smoke.js
-      - name: Test and build APK
+      - name: Unit tests and debug compilation
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
-      - name: Publish test APK in GitHub Releases
+      - name: Build and publish persistently signed release
         env:
+          AUTOORDERS_SIGNING_BUNDLE: ${{ secrets.AUTOORDERS_SIGNING_BUNDLE }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          TAG="v0.1.10-test"
-          cp "$APK" "AutoOrders-0.1.10-debug.apk"
-          ASSET="AutoOrders-0.1.10-debug.apk"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ASSET" --clobber
+          set -euo pipefail
+          if [ -z "$AUTOORDERS_SIGNING_BUNDLE" ]; then
+            echo "::notice::SIGNED APK NOT CREATED. Set repository Actions secret AUTOORDERS_SIGNING_BUNDLE and rerun this workflow."
+            exit 0
+          fi
+          umask 077
+          signing_dir="$RUNNER_TEMP/autoorders-signing"
+          mkdir -p "$signing_dir"
+          trap 'rm -rf "$signing_dir"' EXIT
+          printf '%s' "$AUTOORDERS_SIGNING_BUNDLE" | base64 --decode | tar -xz -C "$signing_dir"
+          export AUTOORDERS_SIGNING_KEYSTORE="$signing_dir/autoorders-release.p12"
+          export AUTOORDERS_SIGNING_PASSWORD="$(cat "$signing_dir/signing-password.txt")"
+          export AUTOORDERS_SIGNING_ALIAS="$(cat "$signing_dir/key-alias.txt")"
+          echo "::add-mask::$AUTOORDERS_SIGNING_PASSWORD"
+          test -s "$AUTOORDERS_SIGNING_KEYSTORE"
+          test -n "$AUTOORDERS_SIGNING_PASSWORD"
+          test -n "$AUTOORDERS_SIGNING_ALIAS"
+          gradle --no-daemon :app:assembleRelease
+          apk="app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$apksigner"
+          verify_output="$("$apksigner" verify --verbose --print-certs "$apk")"
+          expected_sha256="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
+          printf '%s\n' "$verify_output" | grep -Fqi "Signer #1 certificate SHA-256 digest: $expected_sha256"
+          echo "Verified persistent signing certificate SHA-256: $expected_sha256"
+          version="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tag="v$version"
+          release_apk="AutoOrders-$version-signed.apk"
+          cp "$apk" "$release_apk"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::Release $tag already exists; increase versionCode and versionName for a new APK."
           else
-            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.10 — окно подтверждения над затемнением" --notes "Когда dialog и overlay имеют одинаковый z-index, сначала поднимаем только dialog, затем при необходимости пробуем прежний способ. Проверяем доступность кнопки без нажатия, откатываем безуспешные изменения. Финансовые заявки не отправляются." --prerelease
+            gh release create "$tag" "$release_apk" --target "$GITHUB_SHA" \
+              --title "AutoOrders $version - persistent signing" \
+              --notes "Android APK signed with persistent key. A one-time reinstall from older debug-signed versions may be required. Financial automation is experimental." \
+              --prerelease
           fi

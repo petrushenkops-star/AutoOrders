@@ -6,3 +6,7 @@ local.properties
 *.apk
 *.keystore
 *.jks
+*.p12
+*signing-password*
+*GitHub-Secret*
+*signing-backup*
