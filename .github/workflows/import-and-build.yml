@@ -48,11 +48,11 @@ jobs:
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          TAG="v0.1.9-test"
-          cp "$APK" "AutoOrders-0.1.9-debug.apk"
-          ASSET="AutoOrders-0.1.9-debug.apk"
+          TAG="v0.1.10-test"
+          cp "$APK" "AutoOrders-0.1.10-debug.apk"
+          ASSET="AutoOrders-0.1.10-debug.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.9 — исправление перекрытия окна" --notes "Точечное снижение z-index затемняющего overlay только если он перекрывает dialog с идентичным z-index. Откат неудачных изменений, никакой отправки заявок." --prerelease
+            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.10 — окно подтверждения над затемнением" --notes "Когда dialog и overlay имеют одинаковый z-index, сначала поднимаем только dialog, затем при необходимости пробуем прежний способ. Проверяем доступность кнопки без нажатия, откатываем безуспешные изменения. Финансовые заявки не отправляются." --prerelease
           fi

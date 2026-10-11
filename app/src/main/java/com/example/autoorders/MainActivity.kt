@@ -220,6 +220,10 @@ class MainActivity : ComponentActivity() {
                         "Закрой отчёт и проверь кнопку «Подтв.»."
                     "blocked_inside_dialog" -> "Кнопку перекрывает элемент внутри окна подтверждения. " +
                         "Автоматически менять его нельзя, заказ не отправлен."
+                    "dialog_raised" -> "Окно подтверждения поднято над затемняющим слоем. " +
+                        "Закрой отчёт и проверь, видна ли кнопка «Подтв.». Нажатий не выполнялось."
+                    "shifted_and_dialog_raised" -> "Окно перемещено и поднято над затемнением. " +
+                        "Закрой отчёт и проверь кнопку «Подтв.». Нажатий не выполнялось."
                     "overlay_fixed" -> "Затемнение опущено ниже окна подтверждения. " +
                         "Закрой отчёт и проверь видимость кнопки «Подтв.». Нажатий не выполнялось."
                     "shifted_and_overlay_fixed" -> "Окно перемещено, затемнение опущено ниже него. " +
@@ -356,7 +360,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.9 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия 0.1.10 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },

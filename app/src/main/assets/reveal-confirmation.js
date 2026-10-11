@@ -1,7 +1,8 @@
 /*
  * Conservative repair for an overlapping confirmation dialog and overlay.
- * Only changes CSS positioning and the overlay's z-index when both layers have
- * the same fixed-position z-index. Never clicks, submits, hides or disables
+ * Adjusts dialog z-index first (or overlay z-index if needed) only when both
+ * fixed layers have the same z-index and the overlay covers the confirmation.
+ * Reverts changes that do not expose the button. Never clicks, submits, hides or disables
  * any element. Failed attempts restore the original CSS.
  */
 (function () {
@@ -80,6 +81,18 @@
       restoreTranslate();
       return report('unsafe_layer');
     }
+    // With identical z-indices, WebView can paint a later overlay above the dialog.
+    // Prefer lifting only the visible dialog; preserve its existing transform.
+    const oldDialogZ = popupStyle.getPropertyValue('z-index');
+    const oldDialogPriority = popupStyle.getPropertyPriority('z-index');
+    const restoreDialog = () => {
+      if (oldDialogZ) popupStyle.setProperty('z-index',oldDialogZ,oldDialogPriority);
+      else popupStyle.removeProperty('z-index');
+    };
+    popupStyle.setProperty('z-index',String(popupZ + 1),'important');
+    if (reachable()) return report(moved ? 'shifted_and_dialog_raised' : 'dialog_raised');
+    restoreDialog();
+    // Conservative fallback if a stacking context defeats the dialog z-index.
     const layerStyle = blocker.style;
     const oldZ = layerStyle.getPropertyValue('z-index');
     const oldZPriority = layerStyle.getPropertyPriority('z-index');
@@ -87,6 +100,7 @@
     if (reachable()) return report(moved ? 'shifted_and_overlay_fixed' : 'overlay_fixed');
     if (oldZ) layerStyle.setProperty('z-index',oldZ,oldZPriority);
     else layerStyle.removeProperty('z-index');
+    restoreDialog();
     restoreTranslate();
     return report('overlay_still_blocked');
   } catch (_) {

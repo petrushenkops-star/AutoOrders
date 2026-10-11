@@ -1,10 +1,11 @@
 // Offline DOM tests. A mocked confirmation button must never be clicked.
 const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const js=fs.readFileSync('app/src/main/assets/reveal-confirmation.js','utf8');
-function scenario({buttonTop=555,viewport=703,overlayZ=2003,dialogZ=2003,
+function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
   blocked=true,host='lxcompintb.com',popupExists=true,buttonExists=true,
-  blockerClass='van-overlay',buttonDisabled=false}={}) {
-  const data={clicked:0,shift:0,changedOverlay:false};
+  blockerClass='van-overlay',buttonDisabled=false,dialogRaiseWorks=true,overlayLowerWorks=true}={}) {
+  const initialOverlayZ = overlayZ, initialDialogZ = dialogZ;
+  const data={clicked:0,shift:0,changedOverlay:false,changedDialog:false};
   function style(onChange) {
     const values={},priorities={};
     return {
@@ -18,8 +19,13 @@ function scenario({buttonTop=555,viewport=703,overlayZ=2003,dialogZ=2003,
     getBoundingClientRect(){return {top:buttonTop-80+data.shift,height:190}},
     contains(x){return x===button}};
   const overlay={className:blockerClass,getClientRects(){return [1]}};
-  popup.style=style((k,v)=>{if(k==='translate')data.shift=v?Number(v.split(' ')[1].replace('px','')):0});
-  overlay.style=style((k,v)=>{if(k==='z-index'){overlayZ=v===null?2003:Number(v);data.changedOverlay=true}});
+  popup.style=style((k,v)=>{
+    if(k==='translate')data.shift=v?Number(v.split(' ')[1].replace('px','')):0;
+    if(k==='z-index'){dialogZ=v===null?initialDialogZ:Number(v);data.changedDialog=true}
+  });
+  overlay.style=style((k,v)=>{
+    if(k==='z-index'){overlayZ=v===null?initialOverlayZ:Number(v);data.changedOverlay=true}
+  });
   const button={innerText:'Подтв.',disabled:buttonDisabled,
     getClientRects(){return [1]},getAttribute(){return null},
     getBoundingClientRect(){return {top:buttonTop+data.shift,
@@ -36,7 +42,9 @@ function scenario({buttonTop=555,viewport=703,overlayZ=2003,dialogZ=2003,
     elementFromPoint(x,y) {
       const r=button.getBoundingClientRect();
       if(y<r.top||y>r.bottom)return null;
-      return blocked && overlayZ>=dialogZ?overlay:button;
+      const raised=dialogRaiseWorks && dialogZ>initialDialogZ && dialogZ>overlayZ;
+      const lowered=overlayLowerWorks && overlayZ<initialOverlayZ && overlayZ<dialogZ;
+      return blocked && !(raised||lowered)?overlay:button;
     }
   };
   function getComputedStyle(e) {
@@ -46,11 +54,21 @@ function scenario({buttonTop=555,viewport=703,overlayZ=2003,dialogZ=2003,
   const result=JSON.parse(vm.runInNewContext(js,{location:{hostname:host,protocol:'https:'},
     document,window:{innerWidth:390,innerHeight:viewport},getComputedStyle}));
   assert.equal(data.clicked,0);
-  return {...data,result,overlayZ};
+  return {...data,result,overlayZ,dialogZ};
 }
-const fixed=scenario();
-assert.equal(fixed.result.status,'overlay_fixed');
-assert.equal(fixed.overlayZ,2002);
+
+const raised=scenario();
+assert.equal(raised.result.status,'dialog_raised');
+assert.equal(raised.dialogZ,2006);
+assert.equal(raised.clicked,0);
+const fallback=scenario({dialogRaiseWorks:false});
+assert.equal(fallback.result.status,'overlay_fixed');
+assert.equal(fallback.dialogZ,2005);
+assert.equal(fallback.overlayZ,2004);
+const noChange=scenario({dialogRaiseWorks:false,overlayLowerWorks:false});
+assert.equal(noChange.result.status,'overlay_still_blocked');
+assert.equal(noChange.dialogZ,2005);
+assert.equal(noChange.overlayZ,2005);
 assert.equal(scenario({blocked:false}).result.status,'already_visible');
 assert.equal(scenario({buttonTop:150,viewport:290,blocked:false}).result.status,'already_visible');
 assert.equal(scenario({buttonTop:490,viewport:290,blocked:false}).result.status,'shifted');
@@ -60,8 +78,10 @@ assert.equal(scenario({host:'example.org'}).result.status,'invalid_page');
 const unsafe=scenario({blockerClass:'unknown-cover'});
 assert.equal(unsafe.result.status,'unsafe_layer');
 assert.equal(unsafe.changedOverlay,false);
+assert.equal(unsafe.changedDialog,false);
 const unequal=scenario({overlayZ:2400});
 assert.equal(unequal.result.status,'unsafe_layer');
 assert.equal(unequal.changedOverlay,false);
+assert.equal(unequal.changedDialog,false);
 assert.equal(scenario({buttonDisabled:true}).result.status,'disabled');
-console.log('Confirmation overlay: 10 click-free smoke tests passed');
+console.log('Confirmation overlay: 12 click-free smoke tests passed');
