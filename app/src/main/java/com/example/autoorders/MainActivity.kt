@@ -220,6 +220,18 @@ class MainActivity : ComponentActivity() {
                         "Закрой отчёт и проверь кнопку «Подтв.»."
                     "blocked_inside_dialog" -> "Кнопку перекрывает элемент внутри окна подтверждения. " +
                         "Автоматически менять его нельзя, заказ не отправлен."
+                    "overlay_fixed" -> "Затемнение опущено ниже окна подтверждения. " +
+                        "Закрой отчёт и проверь видимость кнопки «Подтв.». Нажатий не выполнялось."
+                    "shifted_and_overlay_fixed" -> "Окно перемещено, затемнение опущено ниже него. " +
+                        "Закрой отчёт и проверь кнопку «Подтв.»."
+                    "overlay_still_blocked" -> "Затемнение всё ещё перекрывает окно. " +
+                        "Изменения отменены. Заказ не отправлен."
+                    "unsafe_layer" -> "Обнаружен другой тип перекрытия или несовпадающие слои. " +
+                        "Ради безопасности изменения не выполнены."
+                    "unknown_blocker" -> "Не удалось однозначно определить перекрывающий слой. " +
+                        "Никаких изменений и нажатий не выполнено."
+                    "disabled" -> "Кнопка подтверждения отключена на сайте. " +
+                        "Никаких действий не выполнено."
                     "layer_still_blocked" -> "Окно всё ещё перекрыто. " +
                         "Изменения отменены, заказ не отправлен."
                     "not_found" -> "Кнопка «Подтв.» не найдена однозначно. " +
@@ -344,7 +356,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.8 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия 0.1.9 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },

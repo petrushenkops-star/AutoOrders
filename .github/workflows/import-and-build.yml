@@ -48,11 +48,11 @@ jobs:
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          TAG="v0.1.8-test"
-          cp "$APK" "AutoOrders-0.1.8-debug.apk"
-          ASSET="AutoOrders-0.1.8-debug.apk"
+          TAG="v0.1.9-test"
+          cp "$APK" "AutoOrders-0.1.9-debug.apk"
+          ASSET="AutoOrders-0.1.9-debug.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.8 — диагностика слоёв окна" --notes "Добавлена безопасная диагностика блокирующего слоя и контекстов наложения, без персональных данных. Диагностика не отправляет финансовые заявки." --prerelease
+            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.9 — исправление перекрытия окна" --notes "Точечное снижение z-index затемняющего overlay только если он перекрывает dialog с идентичным z-index. Откат неудачных изменений, никакой отправки заявок." --prerelease
           fi
