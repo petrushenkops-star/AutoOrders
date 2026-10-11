@@ -195,6 +195,15 @@ class MainActivity : ComponentActivity() {
                         "Никаких нажатий и отправок не выполнялось."
                     "already_visible" -> "Кнопка уже находится в видимой области. " +
                         "Закрой отчёт, чтобы проверить её."
+                    "layer_fixed" -> "Окно поднято над затемнением. " +
+                        "Закрой отчёт и проверь, появилась ли кнопка «Подтв.». " +
+                        "Никаких нажатий не выполнялось."
+                    "shifted_and_layer_fixed" -> "Окно перемещено и поднято над затемнением. " +
+                        "Закрой отчёт и проверь кнопку «Подтв.»."
+                    "blocked_inside_dialog" -> "Кнопку перекрывает элемент внутри окна подтверждения. " +
+                        "Автоматически менять его нельзя, заказ не отправлен."
+                    "layer_still_blocked" -> "Окно всё ещё перекрыто. " +
+                        "Изменения отменены, заказ не отправлен."
                     "not_found" -> "Кнопка «Подтв.» не найдена однозначно. " +
                         "Открой окно подтверждения на сайте и повтори."
                     "no_dialog" -> "Не обнаружено окно подтверждения, которое можно безопасно переместить."
@@ -317,7 +326,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.6 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия 0.1.7 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },

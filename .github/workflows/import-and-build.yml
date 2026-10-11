@@ -48,11 +48,11 @@ jobs:
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          TAG="v0.1.6-test"
-          cp "$APK" "AutoOrders-0.1.6-debug.apk"
-          ASSET="AutoOrders-0.1.6-debug.apk"
+          TAG="v0.1.7-test"
+          cp "$APK" "AutoOrders-0.1.7-debug.apk"
+          ASSET="AutoOrders-0.1.7-debug.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.6 — показать окно подтверждения" --notes "Добавлена ручная коррекция положения окна подтверждения без нажатий или отправки заказов. Финансовые действия по-прежнему не проверены на сайте, тестовый режим включён по умолчанию." --prerelease
+            gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "AutoOrders v0.1.7 — устранение перекрытия окна" --notes "Исправление положения и порядка наложения окна подтверждения. Код не нажимает «Подтв.», не отправляет заказы и откатывает неудачное изменение. Реальные финансовые заявки по-прежнему не протестированы." --prerelease
           fi
