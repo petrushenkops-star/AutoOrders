@@ -155,6 +155,24 @@ class MainActivity : ComponentActivity() {
                             append(result.optInt("confirmBottom"))
                             append(" px")
                         }
+                        if (result.optString("confirmState") == "covered") {
+                            append("\nЧто перекрывает: ")
+                            append(result.optString("blockerType", "не определено"))
+                            append("\nСлой перекрытия: z=")
+                            append(result.optString("blockerZ", "?"))
+                            append(", position=")
+                            append(result.optString("blockerPosition", "?"))
+                            append("\nОтносительно окна: ")
+                            append(result.optString("blockerSide", "не определено"))
+                            append("\nСлой самого окна: z=")
+                            append(result.optString("popupZ", "?"))
+                            append(", position=")
+                            append(result.optString("popupPosition", "?"))
+                            append("\nЦепочка окна: ")
+                            append(result.optString("popupChain", "не определено"))
+                            append("\nЦепочка перекрытия: ")
+                            append(result.optString("blockerChain", "не определено"))
+                        }
                         append("\nЭлементов окна подтверждения: ")
                         append(result.optInt("dialogElements", 0))
                         append("\nСообщение об успехе: ")
@@ -326,7 +344,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.7 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия 0.1.8 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },

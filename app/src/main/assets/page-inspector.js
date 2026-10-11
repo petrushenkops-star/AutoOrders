@@ -65,13 +65,66 @@
     const dialogElements = Array.from(document.querySelectorAll(
       '[role="dialog"], .van-dialog, .van-popup'
     )).filter(visible).length;
+    // Read-only CSS stacking diagnostics; never include raw account text, IDs or class names.
+    const category = node => {
+      if (!node || node === document.body) return 'страница';
+      const cls = typeof node.className === 'string' ? node.className.toLowerCase() : '';
+      const role = (node.getAttribute?.('role') || '').toLowerCase();
+      if (role === 'dialog' || /dialog/.test(cls)) return 'dialog';
+      if (/popup/.test(cls)) return 'popup';
+      if (/overlay/.test(cls)) return 'overlay';
+      if (/backdrop/.test(cls)) return 'backdrop';
+      if (/(^|[\s_-])mask([\s_-]|$)/.test(cls)) return 'mask';
+      if (/loading|spinner/.test(cls)) return 'loading';
+      if (node.tagName === 'BUTTON') return 'button';
+      return 'контейнер';
+    };
+    const css = node => {
+      if (!node) return {z:'?',pos:'?',transform:false,opacity:'?'};
+      const s = getComputedStyle(node);
+      const z = String(s.zIndex || 'auto');
+      const pos = String(s.position || '');
+      const opacity = Number.parseFloat(s.opacity ?? '1');
+      return {
+        z: /^-?\d+$/.test(z) ? z.slice(0,12) : 'auto',
+        pos: ['fixed','absolute','relative','sticky','static'].includes(pos) ? pos : 'неизвестно',
+        transform: !!s.transform && s.transform !== 'none',
+        opacity: Number.isFinite(opacity) ? opacity.toFixed(2) : '?'
+      };
+    };
+    const popup = confirms.length === 1 ?
+      confirms[0].closest?.('[role="dialog"], .van-dialog, .van-popup') || null : null;
+    let blocker = null;
+    if (confirms.length === 1 && confirmState === 'covered') {
+      const b = confirms[0].getBoundingClientRect();
+      blocker = document.elementFromPoint?.(b.left + b.width / 2, b.top + b.height / 2);
+    }
+    const chain = node => {
+      const items = [];
+      for (let e = node, i = 0; e && e !== document.body && i < 7; e = e.parentElement, i++) {
+        const layer = css(e);
+        if (i === 0 || layer.z !== 'auto' || layer.transform || layer.opacity !== '1.00') {
+          items.push(category(e) + '[z=' + layer.z + ', ' + layer.pos +
+            (layer.transform ? ', transform' : '') +
+            (layer.opacity !== '1.00' ? ', opacity=' + layer.opacity : '') + ']');
+        }
+      }
+      return items.slice(0, 5).join(' > ');
+    };
+    const blockerSide = popup && blocker ?
+      (popup.contains?.(blocker) ? 'внутри окна' : 'вне окна') : 'не определено';
     return JSON.stringify({
       status: 'ok', pageStage,
       copyButtons: matching('Быстрое копирование').length,
       codeInput, sendButtons: matching('Отправлять').length,
       amountLabel, confirmButtons: confirms.length, successLabel,
       viewportHeight: Math.round(viewportHeight), dialogElements,
-      confirmState, confirmTop, confirmBottom
+      confirmState, confirmTop, confirmBottom,
+      blockerType: category(blocker), blockerZ: css(blocker).z,
+      blockerPosition: css(blocker).pos, blockerSide,
+      popupType: popup ? category(popup) : 'не определено',
+      popupZ: css(popup).z, popupPosition: css(popup).pos,
+      popupChain: chain(popup), blockerChain: chain(blocker)
     });
   } catch (_) { return JSON.stringify({ status: 'error' }); }
 })()

@@ -23,12 +23,13 @@ function inspect({ bodyText='', names=[], codeField=false, secret='546789', conf
       if (selector.startsWith('[role="dialog"]')) return [];
       return elements;
     },
-    elementFromPoint(){return topElementIsConfirm?elements.find(e=>e.innerText==='Подтв.'):{}}
+    elementFromPoint(){return topElementIsConfirm?elements.find(e=>e.innerText==='Подтв.'):
+      {className:'van-overlay',tagName:'DIV',getAttribute(){return ''}}}
   };
   const result = JSON.parse(vm.runInNewContext(script, {
     location:{protocol:'https:',hostname:host},document:mockDocument,
     window:{innerHeight:850,innerWidth:390},
-    getComputedStyle:()=>({visibility:'visible',display:'block'})
+    getComputedStyle:()=>({visibility:'visible',display:'block',zIndex:'2000',position:'fixed',opacity:'1',transform:'none'})
   }));
   assert.equal(clicks.length,0);
   assert.equal(JSON.stringify(result).includes(secret),false);
@@ -45,6 +46,9 @@ const outside = inspect({names:['Подтв.'],confirmTop:1200});
 assert.equal(outside.confirmState,'offscreen');
 const covered = inspect({names:['Подтв.'],topElementIsConfirm:false});
 assert.equal(covered.confirmState,'covered');
+assert.equal(covered.blockerType,'overlay');
+assert.equal(covered.blockerZ,'2000');
+assert.equal(covered.blockerPosition,'fixed');
 const blocked = inspect({names:['Подтв.'],host:'example.com'});
 assert.equal(blocked.status,'error');
 console.log('Page inspector: 6 safe geometry smoke tests passed');
