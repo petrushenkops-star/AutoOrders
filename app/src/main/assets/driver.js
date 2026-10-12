@@ -10,6 +10,19 @@
   const elements = () => [...document.querySelectorAll('button, a, [role="button"], input[type="submit"], .van-button')].filter(visible);
   const buttons = match => elements().filter(e => norm(e.innerText || e.value || e.getAttribute('aria-label')) === norm(match));
   const safeClick = e => { if (!e || e.disabled) return false; e.click(); return true; };
+  // JS e.click() bypasses hit testing: require a real, unobscured onscreen button
+  // before submitting a financial confirmation.
+  const userReachable = e => {
+    if (!e || !visible(e) || e.disabled) return false;
+    const r = e.getBoundingClientRect?.();
+    const w = window.visualViewport?.width || window.innerWidth;
+    const h = window.visualViewport?.height || window.innerHeight;
+    if (!r || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return false;
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    if (x < 1 || x >= w - 1 || y < 1 || y >= h - 1) return false;
+    const top = document.elementFromPoint?.(x,y);
+    return !!top && (top === e || e.contains?.(top));
+  };
   const report = (status, detail) => JSON.stringify({ status, detail: detail || '' });
   const stage = __STAGE__;
   const code = __CODE__;
@@ -45,7 +58,13 @@
   if (stage === 'WAIT_CONFIRM') {
     if (!/вы уверены.*хотите скопировать/.test(text)) return report('wait', 'Ожидание окна подтверждения');
     const confirmations = buttons('Подтв.');
-    if (confirmations.length !== 1 || !safeClick(confirmations[0])) return report('error', 'Не найдено подтверждение финансового заказа');
+    if (confirmations.length !== 1) return report('error', 'Не найдено однозначное подтверждение финансового заказа');
+    const button = confirmations[0];
+    if (!button.closest?.('[role="dialog"], .van-dialog, .van-popup') || !userReachable(button)) {
+      return report('error', 'Кнопка подтверждения перекрыта или недоступна. ' +
+        'Автоматическое нажатие НЕ выполнялось; проверьте состояние заказа на сайте.');
+    }
+    if (!safeClick(button)) return report('error', 'Кнопка подтверждения отключена');
     return report('advance', 'WAIT_RESULT');
   }
   if (stage === 'WAIT_RESULT') {

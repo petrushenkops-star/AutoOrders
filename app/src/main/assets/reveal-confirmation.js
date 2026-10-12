@@ -89,7 +89,14 @@
       if (oldDialogZ) popupStyle.setProperty('z-index',oldDialogZ,oldDialogPriority);
       else popupStyle.removeProperty('z-index');
     };
-    popupStyle.setProperty('z-index',String(popupZ + 1),'important');
+    // A site re-render can raise the overlay by one stacking level. A narrow
+    // three-level cushion remains above that shift without altering all dialogs.
+    // The caller re-inspects accessibility after a delay before reporting success.
+    if (popupZ > 2147483000) {
+      restoreTranslate();
+      return report('unsafe_layer');
+    }
+    popupStyle.setProperty('z-index',String(popupZ + 3),'important');
     if (reachable()) return report(moved ? 'shifted_and_dialog_raised' : 'dialog_raised');
     restoreDialog();
     // Conservative fallback if a stacking context defeats the dialog z-index.

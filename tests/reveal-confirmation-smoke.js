@@ -3,7 +3,8 @@ const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('nod
 const js=fs.readFileSync('app/src/main/assets/reveal-confirmation.js','utf8');
 function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
   blocked=true,host='lxcompintb.com',popupExists=true,buttonExists=true,
-  blockerClass='van-overlay',buttonDisabled=false,dialogRaiseWorks=true,overlayLowerWorks=true}={}) {
+  blockerClass='van-overlay',buttonDisabled=false,dialogRaiseWorks=true,overlayLowerWorks=true,
+  siteRaisesOverlay=false}={}) {
   const initialOverlayZ = overlayZ, initialDialogZ = dialogZ;
   const data={clicked:0,shift:0,changedOverlay:false,changedDialog:false};
   function style(onChange) {
@@ -21,7 +22,10 @@ function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
   const overlay={className:blockerClass,getClientRects(){return [1]}};
   popup.style=style((k,v)=>{
     if(k==='translate')data.shift=v?Number(v.split(' ')[1].replace('px','')):0;
-    if(k==='z-index'){dialogZ=v===null?initialDialogZ:Number(v);data.changedDialog=true}
+    if(k==='z-index'){
+      dialogZ=v===null?initialDialogZ:Number(v);data.changedDialog=true;
+      if(siteRaisesOverlay)overlayZ=v===null?initialOverlayZ:initialOverlayZ+1;
+    }
   });
   overlay.style=style((k,v)=>{
     if(k==='z-index'){overlayZ=v===null?initialOverlayZ:Number(v);data.changedOverlay=true}
@@ -59,7 +63,11 @@ function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
 
 const raised=scenario();
 assert.equal(raised.result.status,'dialog_raised');
-assert.equal(raised.dialogZ,2006);
+assert.equal(raised.dialogZ,2008);
+const delayedLayerRise=scenario({siteRaisesOverlay:true});
+assert.equal(delayedLayerRise.result.status,'dialog_raised');
+assert.equal(delayedLayerRise.overlayZ,2006);
+assert.equal(delayedLayerRise.dialogZ,2008);
 assert.equal(raised.clicked,0);
 const fallback=scenario({dialogRaiseWorks:false});
 assert.equal(fallback.result.status,'overlay_fixed');

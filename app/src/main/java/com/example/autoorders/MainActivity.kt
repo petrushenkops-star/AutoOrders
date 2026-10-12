@@ -205,10 +205,11 @@ class MainActivity : ComponentActivity() {
         siteDiagnostics = "Попытка показать окно подтверждения…"
         val js = assets.open("reveal-confirmation.js").bufferedReader().use { it.readText() }
         siteView.evaluateJavascript(js) { raw ->
-            siteDiagnostics = try {
+            val status = try {
                 val decoded = JSONTokener(raw).nextValue() as String
-                val result = JSONObject(decoded)
-                when (result.optString("status")) {
+                JSONObject(decoded).optString("status")
+            } catch (_: Exception) { "failed" }
+            val message = when (status) {
                     "shifted" -> "Окно перемещено в видимую область. " +
                         "Закрой этот отчёт и проверь, появилась ли кнопка «Подтв.». " +
                         "Никаких нажатий и отправок не выполнялось."
@@ -246,10 +247,38 @@ class MainActivity : ComponentActivity() {
                         "Не подтверждай и не повторяй заказ, пока не проверен его статус."
                     else -> "Нельзя изменить положение окна на этой странице."
                 }
-            } catch (_: Exception) {
-                "Не удалось обработать ответ сайта. Никаких заказов не отправлено."
+            val apparentlyExposed = status in setOf(
+                "already_visible", "shifted", "dialog_raised", "overlay_fixed",
+                "shifted_and_dialog_raised", "shifted_and_overlay_fixed"
+            )
+            if (!apparentlyExposed) {
+                siteDiagnostics = message
+                showInspectionDialog = true
+            } else {
+                siteDiagnostics = "$message\nПроверяю, не вернулось ли перекрытие…"
+                showInspectionDialog = true
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (!isFinishing && !isDestroyed) {
+                        val inspector = assets.open("page-inspector.js")
+                            .bufferedReader().use { it.readText() }
+                        siteView.evaluateJavascript(inspector) { checked ->
+                            val state = try {
+                                val rawJson = JSONTokener(checked).nextValue() as String
+                                JSONObject(rawJson).optString("confirmState")
+                            } catch (_: Exception) { "unknown" }
+                            siteDiagnostics = message + "\n\nПовторная проверка через 1 секунду: " +
+                                when (state) {
+                                    "visible" -> "Кнопка доступна на странице."
+                                    "covered" -> "Затемнение по-прежнему перекрывает кнопку. " +
+                                        "Не нажимайте её, требуется дополнительная диагностика."
+                                    "offscreen" -> "Кнопка опять оказалась вне экрана."
+                                    else -> "Доступность кнопки не подтверждена."
+                                } + "\nНажатий и заказов не выполнялось."
+                            showInspectionDialog = true
+                        }
+                    }
+                }, 1000)
             }
-            showInspectionDialog = true
         }
     }
 
