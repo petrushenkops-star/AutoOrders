@@ -15,7 +15,15 @@ data class Slot(
     val enabled: Boolean = true,
 )
 
-enum class OrderStatus { WAITING_CODE, TEST_SUCCESS, SUCCESS, ERROR, MISSED }
+enum class OrderStatus { WAITING_CODE, TEST_SUCCESS, SUCCESS, ERROR, MISSED, IN_PROGRESS, UNKNOWN }
+
+/** A lost callback cannot prove the order did not execute. Never turn it into a fresh pending order. */
+fun statusAfterAppRestart(status: OrderStatus): OrderStatus =
+    if (status == OrderStatus.IN_PROGRESS) OrderStatus.UNKNOWN else status
+
+/** Once financial confirmation may have been sent, an interruption is not evidence of failure. */
+fun statusAfterInterruption(confirmationMayHaveBeenSent: Boolean): OrderStatus =
+    if (confirmationMayHaveBeenSent) OrderStatus.UNKNOWN else OrderStatus.ERROR
 
 data class OrderEntry(
     val id: String = UUID.randomUUID().toString(),

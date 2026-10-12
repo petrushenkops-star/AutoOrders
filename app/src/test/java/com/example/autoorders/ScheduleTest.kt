@@ -35,6 +35,18 @@ class ScheduleTest {
         assertEquals(16, nextOccurrence(slot, now).dayOfMonth)
     }
 
+    @Test fun interruptedAttemptHasUnknownOutcome() {
+        assertEquals(OrderStatus.UNKNOWN, statusAfterInterruption(true))
+        assertEquals(OrderStatus.ERROR, statusAfterInterruption(false))
+    }
+
+    @Test fun restartDoesNotReturnInterruptedOrderToPending() {
+        assertEquals(OrderStatus.UNKNOWN, statusAfterAppRestart(OrderStatus.IN_PROGRESS))
+        assertEquals(OrderStatus.WAITING_CODE, statusAfterAppRestart(OrderStatus.WAITING_CODE))
+        assertEquals(OrderStatus.SUCCESS, statusAfterAppRestart(OrderStatus.SUCCESS))
+        assertEquals(OrderStatus.ERROR, statusAfterAppRestart(OrderStatus.ERROR))
+    }
+
     @Test fun nextOccurrenceAlwaysFuture() {
         for (day in DayOfWeek.entries) {
             val now = ZonedDateTime.of(2026, 10, 9, 17, 0, 0, 0, zone)

@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         notificationOrderId = intent.getStringExtra("order_id")
         store = LocalStore(this)
+        store.recoverInterruptedOrders()
         alarms = AlarmScheduler(this)
         ensureChannel(this)
         siteView = WebView(this).apply {
@@ -94,8 +95,8 @@ class MainActivity : ComponentActivity() {
             }
             loadUrl("https://lxcompintb.com/ru")
         }
-        siteRunner = SiteRunner(siteView, { runnerStatus = it }, { success, detail ->
-            activeOrderId?.let { store.updateOrder(it, if (success) OrderStatus.SUCCESS else OrderStatus.ERROR, detail) }
+        siteRunner = SiteRunner(siteView, { runnerStatus = it }, { outcome, detail ->
+            activeOrderId?.let { store.updateOrder(it, outcome, detail) }
             activeOrderId = null
             runnerActive = false
             logUpdate++
@@ -360,7 +361,8 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия 0.1.10 • lxcompintb.com", style = MaterialTheme.typography.bodySmall)
+                        Text("Версия ${packageManager.getPackageInfo(packageName, 0).versionName} • lxcompintb.com",
+                            style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -458,6 +460,9 @@ class MainActivity : ComponentActivity() {
                                             selectedOrderId = null
                                         } else {
                                             activeOrderId = id
+                                            store.updateOrder(id, OrderStatus.IN_PROGRESS,
+                                                "Выполнение на сайте начато. Не повторяйте заказ при неизвестном результате.")
+                                            orders = store.orders()
                                             tab = 2
                                             runnerActive = true
                                             siteRunner.start(submittedCode)
@@ -558,8 +563,10 @@ class MainActivity : ComponentActivity() {
         OrderStatus.WAITING_CODE -> "Ожидание кода"
         OrderStatus.TEST_SUCCESS -> "Тест выполнен"
         OrderStatus.SUCCESS -> "Сайт сообщил об успехе"
-        OrderStatus.ERROR -> "Ошибка / неизвестный результат"
+        OrderStatus.ERROR -> "Ошибка выполнения"
         OrderStatus.MISSED -> "Пропущен"
+        OrderStatus.IN_PROGRESS -> "Выполняется"
+        OrderStatus.UNKNOWN -> "Результат неизвестен — проверьте на сайте"
     }
 
     override fun onDestroy() {

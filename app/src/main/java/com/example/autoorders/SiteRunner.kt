@@ -10,13 +10,14 @@ import org.json.JSONTokener
 class SiteRunner(
     private val view: WebView,
     private val progress: (String) -> Unit,
-    private val completed: (Boolean, String) -> Unit,
+    private val completed: (OrderStatus, String) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private var stage = ""
     private var code = ""
     private var active = false
     private var ticks = 0
+    private var confirmationMayHaveBeenSent = false
     private var script: String? = null
 
     fun isActive() = active
@@ -27,6 +28,7 @@ class SiteRunner(
         code = dynamicCode
         stage = "OPEN_COPY"
         ticks = 0
+        confirmationMayHaveBeenSent = false
         active = true
         progress("Начало обработки заказа. Откройте личный кабинет на вкладке «Сайт».")
         poll()
@@ -34,7 +36,9 @@ class SiteRunner(
 
     fun stop() {
         if (!active) return
-        finish(false, "Остановлено пользователем. Если подтверждение уже было отправлено, проверьте заказ на сайте.")
+        finish(statusAfterInterruption(confirmationMayHaveBeenSent),
+            "Остановлено пользователем. Если подтверждение могло быть отправлено, " +
+                "проверьте результат на сайте перед повторной попыткой.")
     }
 
     private fun poll() {
@@ -42,7 +46,9 @@ class SiteRunner(
         // Avoid resubmitting if the financial outcome cannot be established.
         ticks++
         if (ticks > 75) {
-            finish(false, "Истекло время ожидания. Статус заказа необходимо проверить вручную.")
+            finish(statusAfterInterruption(confirmationMayHaveBeenSent),
+                "Истекло время ожидания. Если заказ мог быть подтверждён, " +
+                    "проверьте результат на сайте перед повторной попыткой.")
             return
         }
         val url = view.url ?: ""
@@ -52,6 +58,9 @@ class SiteRunner(
             return
         }
         if (script == null) script = view.context.assets.open("driver.js").bufferedReader().use { it.readText() }
+        // Mark uncertainty BEFORE executing a script that may press financial confirmation.
+        // A stop/process death between the click and JS callback must not look like failure.
+        if (stage == "WAIT_CONFIRM") confirmationMayHaveBeenSent = true
         val js = script!!.replace("__STAGE__", JSONObject.quote(stage)).replace("__CODE__", JSONObject.quote(code))
         view.evaluateJavascript(js) { raw ->
             if (!active) return@evaluateJavascript
@@ -71,21 +80,35 @@ class SiteRunner(
                         })
                     }
                     "wait" -> progress(obj.optString("detail"))
-                    "error" -> { finish(false, obj.optString("detail")); return@evaluateJavascript }
-                    "success" -> { finish(true, obj.optString("detail")); return@evaluateJavascript }
-                    else -> { finish(false, "Неизвестный ответ сайта"); return@evaluateJavascript }
+                    "error" -> {
+                        finish(statusAfterInterruption(confirmationMayHaveBeenSent),
+                            obj.optString("detail") + if (confirmationMayHaveBeenSent)
+                                ". Результат заказа неизвестен: проверьте его на сайте." else "")
+                        return@evaluateJavascript
+                    }
+                    "success" -> { finish(OrderStatus.SUCCESS, obj.optString("detail")); return@evaluateJavascript }
+                    else -> {
+                        finish(statusAfterInterruption(confirmationMayHaveBeenSent),
+                            "Неизвестный ответ сайта. Проверьте заказ.")
+                        return@evaluateJavascript
+                    }
                 }
-            } catch (_: Exception) { finish(false, "Не удалось распознать страницу. Проверьте заказ на сайте."); return@evaluateJavascript }
+            } catch (_: Exception) {
+                finish(statusAfterInterruption(confirmationMayHaveBeenSent),
+                    "Не удалось распознать страницу. Проверьте заказ на сайте.")
+                return@evaluateJavascript
+            }
             handler.postDelayed({ poll() }, 1100)
         }
     }
 
-    private fun finish(success: Boolean, detail: String) {
+    private fun finish(status: OrderStatus, detail: String) {
         active = false
         code = ""
         stage = ""
+        confirmationMayHaveBeenSent = false
         handler.removeCallbacksAndMessages(null)
         progress(detail)
-        completed(success, detail)
+        completed(status, detail)
     }
 }

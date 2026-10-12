@@ -32,6 +32,19 @@ class LocalStore(context: Context) {
         }.sortedByDescending { it.createdAtMillis }
     } catch (_: Exception) { emptyList() }
 
+    /** On process death, preserve an uncertain financial outcome; no automatic replay. */
+    fun recoverInterruptedOrders() {
+        val current = orders()
+        if (current.none { it.status == OrderStatus.IN_PROGRESS }) return
+        putOrders(current.map { order ->
+            if (order.status != OrderStatus.IN_PROGRESS) order else order.copy(
+                status = statusAfterAppRestart(order.status),
+                details = "Приложение закрылось во время выполнения. Результат неизвестен. " +
+                    "Проверьте состояние заказа на сайте перед новой попыткой."
+            )
+        })
+    }
+
     fun addOrder(order: OrderEntry) {
         // Only persist results, NOT the dynamic code.
         putOrders((listOf(order) + orders()).take(250))
