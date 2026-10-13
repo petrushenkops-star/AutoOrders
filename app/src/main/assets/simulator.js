@@ -30,7 +30,7 @@ function render(){
   const a=el.getAttribute("data-action");
   if(a==="open"&&stage==="menu")stage="code";
   else if(a==="send"&&stage==="code"){
-    if(!/^\\d+$/.test(root.querySelector("input")?.value||""))return;
+    if(!/^\d+$/.test(root.querySelector("input")?.value||""))return;
     stage="details";
   }else if(a==="copy"&&stage==="details")stage="confirm";
   else if(a==="cancel"&&stage==="confirm")stage="details";
