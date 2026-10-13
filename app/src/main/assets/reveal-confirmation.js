@@ -7,10 +7,13 @@
  */
 (function () {
   const report = status => JSON.stringify({status});
-  if (location.protocol !== 'https:' ||
-      !(location.hostname === 'lxcompintb.com' ||
-        location.hostname.endsWith('.lxcompintb.com')) ||
-      !document.body) return report('invalid_page');
+  const simulated = typeof __SIMULATOR__ !== 'undefined' && __SIMULATOR__ === true;
+  const isolated = location.protocol === 'https:' &&
+    location.hostname === 'appassets.androidplatform.net' &&
+    document.getElementById?.('autoorders-simulator-root')?.getAttribute('data-autoorders-simulator') === 'v1';
+  const realSite = location.protocol === 'https:' &&
+    (location.hostname === 'lxcompintb.com' || location.hostname.endsWith('.lxcompintb.com'));
+  if (!(simulated ? isolated : realSite) || !document.body) return report('invalid_page');
   try {
     const normalize = value => String(value || '').replace(/\s+/g,' ').trim().toLowerCase();
     const visible = element => !!element && !!element.getClientRects().length &&
