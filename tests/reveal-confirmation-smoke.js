@@ -22,10 +22,10 @@ function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
       if(!data.reordered)data.restored=true;
     }
   };
+  const overlay={parentElement:parent,nextSibling:null,className:blockerClass,getClientRects(){return [1]},contains(){return false}};
   const popup={parentElement:parent,nextSibling:overlay,getClientRects(){return [1]},
     getBoundingClientRect(){return {top:buttonTop-80+data.shift,height:190}},
     contains(x){return x===button || x===popup}};
-  const overlay={parentElement:parent,nextSibling:null,className:blockerClass,getClientRects(){return [1]},contains(){return false}};
   popup.style=style((k,v)=>{
     if(k==='translate')data.shift=v?Number(v.split(' ')[1].replace('px','')):0;
     if(k==='z-index'){
