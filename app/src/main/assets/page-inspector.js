@@ -3,8 +3,13 @@
  * No clicks, input edits, network requests, secrets, or raw page contents in result.
  */
 (function () {
-  const permitted = location.protocol === 'https:' &&
+  const simulated = typeof __SIMULATOR__ !== 'undefined' && __SIMULATOR__ === true;
+  const isolated = location.protocol === 'https:' &&
+    location.hostname === 'appassets.androidplatform.net' &&
+    document.getElementById?.('autoorders-simulator-root')?.getAttribute('data-autoorders-simulator') === 'v1';
+  const realSite = location.protocol === 'https:' &&
     (location.hostname === 'lxcompintb.com' || location.hostname.endsWith('.lxcompintb.com'));
+  const permitted = simulated ? isolated : realSite;
   if (!permitted || !document.body) return JSON.stringify({ status: 'error' });
   try {
     const norm = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
