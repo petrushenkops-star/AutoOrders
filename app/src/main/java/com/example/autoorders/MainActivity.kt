@@ -262,6 +262,10 @@ class MainActivity : ComponentActivity() {
                         "Закрой отчёт и проверь видимость кнопки «Подтв.». Нажатий не выполнялось."
                     "shifted_and_overlay_fixed" -> "Окно перемещено, затемнение опущено ниже него. " +
                         "Закрой отчёт и проверь кнопку «Подтв.»."
+                    "dom_reordered" -> "Окно перемещено поверх затемнения без нажатий. " +
+                        "Приложение проверит доступность кнопки ещё раз."
+                    "shifted_and_dom_reordered" -> "Окно перемещено и выведено поверх затемнения. " +
+                        "Приложение проверит доступность кнопки ещё раз."
                     "overlay_still_blocked" -> "Затемнение всё ещё перекрывает окно. " +
                         "Изменения отменены. Заказ не отправлен."
                     "unsafe_layer" -> "Обнаружен другой тип перекрытия или несовпадающие слои. " +
@@ -281,7 +285,8 @@ class MainActivity : ComponentActivity() {
                 }
             val apparentlyExposed = status in setOf(
                 "already_visible", "shifted", "dialog_raised", "overlay_fixed",
-                "shifted_and_dialog_raised", "shifted_and_overlay_fixed"
+                "shifted_and_dialog_raised", "shifted_and_overlay_fixed",
+                "dom_reordered", "shifted_and_dom_reordered"
             )
             if (status == "overlay_still_blocked") {
                 // Only read DOM metadata after reverting failed temporary CSS edits.

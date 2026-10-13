@@ -4,9 +4,9 @@ const js=fs.readFileSync('app/src/main/assets/reveal-confirmation.js','utf8');
 function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
   blocked=true,host='lxcompintb.com',popupExists=true,buttonExists=true,
   blockerClass='van-overlay',buttonDisabled=false,dialogRaiseWorks=true,overlayLowerWorks=true,
-  siteRaisesOverlay=false}={}) {
+  siteRaisesOverlay=false,reorderWorks=true}={}) {
   const initialOverlayZ = overlayZ, initialDialogZ = dialogZ;
-  const data={clicked:0,shift:0,changedOverlay:false,changedDialog:false};
+  const data={clicked:0,shift:0,changedOverlay:false,changedDialog:false,reordered:false,restored:false};
   function style(onChange) {
     const values={},priorities={};
     return {
@@ -16,10 +16,16 @@ function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
       removeProperty(k){delete values[k];delete priorities[k];onChange(k,null)}
     };
   }
-  const popup={getClientRects(){return [1]},
+  const parent={
+    insertBefore(node,next){if(node!==popup)throw Error('unexpected node');
+      data.reordered=next===null;
+      if(!data.reordered)data.restored=true;
+    }
+  };
+  const popup={parentElement:parent,nextSibling:overlay,getClientRects(){return [1]},
     getBoundingClientRect(){return {top:buttonTop-80+data.shift,height:190}},
-    contains(x){return x===button}};
-  const overlay={className:blockerClass,getClientRects(){return [1]}};
+    contains(x){return x===button || x===popup}};
+  const overlay={parentElement:parent,nextSibling:null,className:blockerClass,getClientRects(){return [1]},contains(){return false}};
   popup.style=style((k,v)=>{
     if(k==='translate')data.shift=v?Number(v.split(' ')[1].replace('px','')):0;
     if(k==='z-index'){
@@ -48,7 +54,9 @@ function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
       if(y<r.top||y>r.bottom)return null;
       const raised=dialogRaiseWorks && dialogZ>initialDialogZ && dialogZ>overlayZ;
       const lowered=overlayLowerWorks && overlayZ<initialOverlayZ && overlayZ<dialogZ;
-      return blocked && !(raised||lowered)?overlay:button;
+      const moved=dialogRaiseWorks===false && overlayLowerWorks===false &&
+        data.reordered && reorderWorks;
+      return blocked && !(raised||lowered||moved)?overlay:button;
     }
   };
   function getComputedStyle(e) {
@@ -73,8 +81,13 @@ const fallback=scenario({dialogRaiseWorks:false});
 assert.equal(fallback.result.status,'overlay_fixed');
 assert.equal(fallback.dialogZ,2005);
 assert.equal(fallback.overlayZ,2004);
-const noChange=scenario({dialogRaiseWorks:false,overlayLowerWorks:false});
+const reordered=scenario({dialogRaiseWorks:false,overlayLowerWorks:false});
+assert.equal(reordered.result.status,'dom_reordered');
+assert.equal(reordered.reordered,true);
+assert.equal(reordered.clicked,0);
+const noChange=scenario({dialogRaiseWorks:false,overlayLowerWorks:false,reorderWorks:false});
 assert.equal(noChange.result.status,'overlay_still_blocked');
+assert.equal(noChange.restored,true);
 assert.equal(noChange.dialogZ,2005);
 assert.equal(noChange.overlayZ,2005);
 assert.equal(scenario({blocked:false}).result.status,'already_visible');
@@ -92,4 +105,4 @@ assert.equal(unequal.result.status,'unsafe_layer');
 assert.equal(unequal.changedOverlay,false);
 assert.equal(unequal.changedDialog,false);
 assert.equal(scenario({buttonDisabled:true}).result.status,'disabled');
-console.log('Confirmation overlay: 12 click-free smoke tests passed');
+console.log('Confirmation overlay: click-free smoke tests passed including DOM reorder and rollback');

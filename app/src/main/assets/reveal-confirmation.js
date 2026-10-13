@@ -108,6 +108,23 @@
     if (oldZ) layerStyle.setProperty('z-index',oldZ,oldZPriority);
     else layerStyle.removeProperty('z-index');
     restoreDialog();
+
+    // The device diagnostic showed equal-z siblings under the same parent.
+    // When changing their z-index does not work, temporarily place the dialog
+    // AFTER the overlay in DOM paint order. Preserve and restore its original
+    // position if the button is still covered. No clicks or submissions.
+    if (popup.parentElement && popup.parentElement === blocker.parentElement &&
+        popup !== blocker && !popup.contains(blocker) && !blocker.contains(popup)) {
+      const parent = popup.parentElement;
+      const originalNext = popup.nextSibling;
+      try {
+        parent.insertBefore(popup, blocker.nextSibling);
+        if (reachable()) return report(moved ? 'shifted_and_dom_reordered' : 'dom_reordered');
+        parent.insertBefore(popup, originalNext);
+      } catch (_) {
+        try { parent.insertBefore(popup, originalNext); } catch (_) {}
+      }
+    }
     restoreTranslate();
     return report('overlay_still_blocked');
   } catch (_) {
