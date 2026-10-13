@@ -559,6 +559,11 @@ class MainActivity : ComponentActivity() {
                     }
                     2 -> {
                         Text("Сайт и автоматизация", style = MaterialTheme.typography.titleMedium)
+                        OutlinedButton(onClick = {
+                            startActivity(Intent(this@MainActivity, SimulatorActivity::class.java))
+                        }, enabled = !runnerActive) {
+                            Text("Офлайн-симулятор — без реальных заказов")
+                        }
                         Text("Первый вход в личный кабинет потребуется выполнить вручную. Встроенный браузер не использует сессию Chrome.", style = MaterialTheme.typography.bodySmall)
                         if (runnerActive) {
                             Button(onClick = { siteRunner.stop() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
