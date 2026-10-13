@@ -66,7 +66,11 @@ class SiteRunner(
         }
         if (script == null) {
             val source = view.context.assets.open("driver.js").bufferedReader().use { it.readText() }
-            script = if (simulation) "const __SIMULATOR__ = true;\n" + source else source
+            // Each evaluateJavascript runs in the same page context. Global "const"
+            // declarations persist, so declare the flag inside a fresh function.
+            script = if (simulation)
+                "(function() { const __SIMULATOR__ = true; return " + source + "\n})()"
+            else source
         }
         // Mark uncertainty BEFORE executing a script that may press financial confirmation.
         // A stop/process death between the click and JS callback must not look like failure.

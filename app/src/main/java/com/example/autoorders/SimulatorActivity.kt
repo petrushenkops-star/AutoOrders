@@ -151,7 +151,11 @@ class SimulatorActivity : ComponentActivity() {
 
     private fun executeScript(filename: String, done: (JSONObject?) -> Unit) {
         val source = assets.open(filename).bufferedReader().use { it.readText() }
-        demo.evaluateJavascript("const __SIMULATOR__=true;\n" + source) { raw ->
+        // Do not inject a global const: subsequent evaluateJavascript calls
+        // run in the same WebView JS context and would return JSON null.
+        val isolated = "(function() { const __SIMULATOR__ = true; return " +
+            source + "\n})()"
+        demo.evaluateJavascript(isolated) { raw ->
             val data = try {
                 JSONObject(JSONTokener(raw).nextValue() as String)
             } catch (_: Exception) { null }
@@ -161,18 +165,28 @@ class SimulatorActivity : ComponentActivity() {
 
     private fun inspectPage() {
         executeScript("page-inspector.js") { data ->
-            diagnostics = "Экран: ${data?.optString("pageStage", "?")}. " +
-                "Кнопка: ${data?.optString("confirmState", "?")}. " +
-                "Перекрытие: ${data?.optString("blockerType", "?")}."
+            diagnostics = if (data == null) {
+                "Проверка не выполнена: JavaScript не вернул результат. " +
+                    "Сбрось симулятор и попробуй снова."
+            } else {
+                "Экран: ${data.optString("pageStage", "?")}. " +
+                    "Кнопка: ${data.optString("confirmState", "?")}. " +
+                    "Перекрытие: ${data.optString("blockerType", "?")}."
+            }
         }
     }
 
     private fun revealPage() {
         executeScript("reveal-confirmation.js") { data ->
-            message = "Результат исправления: ${data?.optString("status", "не определён")}."
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (!isFinishing && !isDestroyed) inspectPage()
-            }, 1000)
+            if (data == null) {
+                message = "Исправление не проверено: JavaScript не вернул результат. " +
+                    "Никаких заказов не отправлено."
+            } else {
+                message = "Результат исправления: ${data.optString("status", "не определён")}."
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (!isFinishing && !isDestroyed) inspectPage()
+                }, 1000)
+            }
         }
     }
 
