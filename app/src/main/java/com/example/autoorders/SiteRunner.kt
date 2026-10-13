@@ -69,7 +69,7 @@ class SiteRunner(
             // Each evaluateJavascript runs in the same page context. Global "const"
             // declarations persist, so declare the flag inside a fresh function.
             script = if (simulation)
-                "(function() { const __SIMULATOR__ = true; return " + source + "\n})()"
+                "(function() { const __SIMULATOR__ = true; return (" + source + "\n); })()"
             else source
         }
         // Mark uncertainty BEFORE executing a script that may press financial confirmation.

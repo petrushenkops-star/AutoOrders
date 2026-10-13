@@ -51,9 +51,9 @@ assert.match(kotlin,/blockNetworkLoads = true/);
 assert.match(kotlin,/allowFileAccess = false/);
 assert.match(kotlin,/allowContentAccess = false/);
 assert.match(kotlin,/simulation = true/);
-assert.match(kotlin,/const __SIMULATOR__ = true; return /);
+assert.match(kotlin,/const __SIMULATOR__ = true; return \\(/);
 const siteRunner=fs.readFileSync("app/src/main/java/com/example/autoorders/SiteRunner.kt","utf8");
-assert.match(siteRunner,/const __SIMULATOR__ = true; return /);
+assert.match(siteRunner,/const __SIMULATOR__ = true; return \\(/);
 
 // WebView evaluates multiple scripts in one persistent JS context. A global
 // top-level const would throw "already been declared" on the second evaluation.
@@ -63,7 +63,7 @@ const revealed=fs.readFileSync("app/src/main/assets/reveal-confirmation.js","utf
 const scope={location:{protocol:"https:",hostname:"appassets.androidplatform.net",host:"appassets.androidplatform.net"},
   document:{body:null,getElementById(){return root;}},window:{}};
 vm.createContext(scope);
-const isolated=source=>"(function() { const __SIMULATOR__ = true; return "+source+"\n})()";
+const isolated=source=>"(function() { const __SIMULATOR__ = true; return ("+source+"\n); })()";
 const preparedDriver=driver.replace("__STAGE__",'"OPEN_COPY"').replace("__CODE__",'"123456"');
 for(let i=0;i<5;i++){
   assert.equal(JSON.parse(vm.runInContext(isolated(inspected),scope)).status,"error");

@@ -153,8 +153,8 @@ class SimulatorActivity : ComponentActivity() {
         val source = assets.open(filename).bufferedReader().use { it.readText() }
         // Do not inject a global const: subsequent evaluateJavascript calls
         // run in the same WebView JS context and would return JSON null.
-        val isolated = "(function() { const __SIMULATOR__ = true; return " +
-            source + "\n})()"
+        val isolated = "(function() { const __SIMULATOR__ = true; return (" +
+            source + "\n); })()"
         demo.evaluateJavascript(isolated) { raw ->
             val data = try {
                 JSONObject(JSONTokener(raw).nextValue() as String)
