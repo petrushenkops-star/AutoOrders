@@ -26,7 +26,12 @@
   const report = (status, detail) => JSON.stringify({ status, detail: detail || '' });
   const stage = __STAGE__;
   const code = __CODE__;
-  if (location.host !== 'lxcompintb.com' || location.protocol !== 'https:') return report('error', 'Неверный адрес сайта');
+  const simulated = typeof __SIMULATOR__ !== 'undefined' && __SIMULATOR__ === true;
+  const isolated = location.protocol === 'https:' &&
+    location.hostname === 'appassets.androidplatform.net' &&
+    document.getElementById?.('autoorders-simulator-root')?.getAttribute('data-autoorders-simulator') === 'v1';
+  const realSite = location.host === 'lxcompintb.com' && location.protocol === 'https:';
+  if (simulated ? !isolated : !realSite) return report('error', 'Неверный адрес сайта');
   if (!document.body) return report('wait', 'Загрузка страницы');
   if (/неверный ввод динамического пароля|неправильный динамический пароль/.test(text)) return report('error', 'Сайт отклонил цифровой код');
   if (stage === 'OPEN_COPY') {
