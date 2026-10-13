@@ -51,9 +51,9 @@ assert.match(kotlin,/blockNetworkLoads = true/);
 assert.match(kotlin,/allowFileAccess = false/);
 assert.match(kotlin,/allowContentAccess = false/);
 assert.match(kotlin,/simulation = true/);
-assert.match(kotlin,/const __SIMULATOR__ = true; return \\(/);
+assert.ok(kotlin.includes("const __SIMULATOR__ = true; return ("));
 const siteRunner=fs.readFileSync("app/src/main/java/com/example/autoorders/SiteRunner.kt","utf8");
-assert.match(siteRunner,/const __SIMULATOR__ = true; return \\(/);
+assert.ok(siteRunner.includes("const __SIMULATOR__ = true; return ("));
 
 // WebView evaluates multiple scripts in one persistent JS context. A global
 // top-level const would throw "already been declared" on the second evaluation.
