@@ -48,6 +48,9 @@ window.autoordersSimulator=Object.freeze({
   oz=Number.isInteger(overlayZ)&&overlayZ>0&&overlayZ<=100000?overlayZ:2004;
   stage="menu";render();return true;
  },
+ // A single button opens the test confirmation in the currently selected mode.
+ // This does not contact lxcompintb.com and does not submit anything.
+ showConfirmation(){stage="confirm";render();return true;},
  state(){return stage;}
 });
 render();

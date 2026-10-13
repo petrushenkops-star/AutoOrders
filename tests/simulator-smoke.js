@@ -28,6 +28,15 @@ assert.equal(sim.reset("hang","normal"),true);
 click("open");click("send");click("copy");click("confirm");
 assert.equal(sim.state(),"hang");
 assert.equal(sim.reset("unexpected","normal"),false);
+// Directly open the confirmation even after reset, preserving the blocked mode.
+assert.equal(sim.reset("success","blocked"),true);
+assert.equal(sim.state(),"menu");
+assert.equal(sim.showConfirmation(),true);
+assert.equal(sim.state(),"confirm");
+assert.ok(html.indexOf("van-dialog") < html.indexOf("van-overlay"));
+assert.equal(sim.reset("success","normal"),true);
+assert.equal(sim.showConfirmation(),true);
+assert.ok(html.indexOf("van-overlay") < html.indexOf("van-dialog"));
 // Driver may enter the simulator ONLY with explicit flag, local origin and marker.
 const driver=fs.readFileSync("app/src/main/assets/driver.js","utf8");
 function probe(host,flag,marker){
@@ -51,6 +60,9 @@ assert.match(kotlin,/blockNetworkLoads = true/);
 assert.match(kotlin,/allowFileAccess = false/);
 assert.match(kotlin,/allowContentAccess = false/);
 assert.match(kotlin,/simulation = true/);
+assert.match(kotlin,/window\.autoordersSimulator\.showConfirmation\(\)/);
+assert.match(kotlin,/Открыть тестовое окно/);
+assert.match(kotlin,/Исправить перекрытие/);
 assert.ok(kotlin.includes("const __SIMULATOR__ = true; return ("));
 const siteRunner=fs.readFileSync("app/src/main/java/com/example/autoorders/SiteRunner.kt","utf8");
 assert.ok(siteRunner.includes("const __SIMULATOR__ = true; return ("));

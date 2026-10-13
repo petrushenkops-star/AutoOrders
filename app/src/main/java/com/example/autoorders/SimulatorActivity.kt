@@ -116,11 +116,15 @@ class SimulatorActivity : ComponentActivity() {
                         OutlinedButton(enabled = loaded && !running,
                             onClick = { resetPage() }) { Text("Сброс") }
                     }
+                    Button(
+                        enabled = loaded && !running,
+                        onClick = { openTestDialog() }
+                    ) { Text("Открыть тестовое окно") }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         OutlinedButton(enabled = loaded && !running,
                             onClick = { inspectPage() }) { Text("Проверить") }
                         OutlinedButton(enabled = loaded && !running,
-                            onClick = { revealPage() }) { Text("Показать окно") }
+                            onClick = { revealPage() }) { Text("Исправить перекрытие") }
                     }
                     Text(message, style = MaterialTheme.typography.bodySmall)
                     if (diagnostics.isNotBlank()) {
@@ -149,6 +153,18 @@ class SimulatorActivity : ComponentActivity() {
         }
     }
 
+    private fun openTestDialog() {
+        if (!loaded || running) return
+        demo.evaluateJavascript("window.autoordersSimulator.showConfirmation()") { result ->
+            if (result == "true") {
+                message = "Тестовое окно открыто. Проверь кнопку «Подтв.» или нажми «Проверить»."
+                diagnostics = ""
+            } else {
+                message = "Не удалось открыть тестовое окно. Нажми «Сброс» и попробуй снова."
+            }
+        }
+    }
+
     private fun executeScript(filename: String, done: (JSONObject?) -> Unit) {
         val source = assets.open(filename).bufferedReader().use { it.readText() }
         // Do not inject a global const: subsequent evaluateJavascript calls
@@ -168,6 +184,9 @@ class SimulatorActivity : ComponentActivity() {
             diagnostics = if (data == null) {
                 "Проверка не выполнена: JavaScript не вернул результат. " +
                     "Сбрось симулятор и попробуй снова."
+            } else if (data.optString("confirmState") == "not_found") {
+                "Окно подтверждения ещё не открыто. " +
+                    "Нажми «Открыть тестовое окно», затем «Проверить»."
             } else {
                 "Экран: ${data.optString("pageStage", "?")}. " +
                     "Кнопка: ${data.optString("confirmState", "?")}. " +
@@ -181,6 +200,8 @@ class SimulatorActivity : ComponentActivity() {
             if (data == null) {
                 message = "Исправление не проверено: JavaScript не вернул результат. " +
                     "Никаких заказов не отправлено."
+            } else if (data.optString("status") == "not_found") {
+                message = "Сначала нажми «Открыть тестовое окно», чтобы появилась кнопка «Подтв.»."
             } else {
                 message = "Результат исправления: ${data.optString("status", "не определён")}."
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
