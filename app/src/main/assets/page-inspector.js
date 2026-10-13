@@ -113,6 +113,44 @@
     };
     const blockerSide = popup && blocker ?
       (popup.contains?.(blocker) ? 'внутри окна' : 'вне окна') : 'не определено';
+
+    // Read-only diagnostics for nested stacking contexts. No account data,
+    // site text, form fields, IDs or raw class names leave this script.
+    const contextFlags = node => {
+      if (!node || node === document.body) return 'нет';
+      const s = getComputedStyle(node), flags = [];
+      if (s.transform && s.transform !== 'none') flags.push('transform');
+      if (s.filter && s.filter !== 'none') flags.push('filter');
+      if (s.perspective && s.perspective !== 'none') flags.push('perspective');
+      if (s.isolation === 'isolate') flags.push('isolation');
+      if (/(paint|layout|strict|content)/.test(s.contain || '')) flags.push('contain');
+      if (Number.isFinite(Number(s.opacity)) && Number(s.opacity) < 1) flags.push('opacity');
+      if (s.zIndex && s.zIndex !== 'auto' &&
+          ['fixed','absolute','relative','sticky'].includes(s.position)) flags.push('z-index');
+      return flags.join(', ') || 'нет';
+    };
+    const ancestry = node => {
+      const result = [];
+      for (let e = node, i = 0; e && i < 16; e = e.parentElement, i++) {
+        result.push(e);
+        if (e === document.body) break;
+      }
+      return result;
+    };
+    const ancestryPopup = popup ? ancestry(popup) : [];
+    const ancestryBlocker = blocker ? ancestry(blocker) : [];
+    const commonParent = ancestryPopup.find(e => ancestryBlocker.includes(e)) || null;
+    const layerRelation = !popup || !blocker ? 'unknown' :
+      popup.contains?.(blocker) ? 'blocker_inside_dialog' :
+      blocker.contains?.(popup) ? 'dialog_inside_blocker' :
+      popup.parentElement && popup.parentElement === blocker.parentElement ? 'siblings' :
+      'separate_parents';
+    const rectButton = confirms.length === 1 ? confirms[0].getBoundingClientRect() : null;
+    const hitStack = rectButton && typeof document.elementsFromPoint === 'function' ?
+      document.elementsFromPoint(rectButton.left + rectButton.width / 2,
+        rectButton.top + rectButton.height / 2).slice(0, 5).map(category).join(' > ') :
+      'недоступно';
+    const parentLayer = e => e?.parentElement || null;
     return JSON.stringify({
       status: 'ok', pageStage,
       copyButtons: matching('Быстрое копирование').length,
@@ -124,7 +162,17 @@
       blockerPosition: css(blocker).pos, blockerSide,
       popupType: popup ? category(popup) : 'не определено',
       popupZ: css(popup).z, popupPosition: css(popup).pos,
-      popupChain: chain(popup), blockerChain: chain(blocker)
+      popupChain: chain(popup), blockerChain: chain(blocker),
+      layerRelation, commonParent: category(commonParent),
+      popupParentType: category(parentLayer(popup)),
+      blockerParentType: category(parentLayer(blocker)),
+      popupParentZ: css(parentLayer(popup)).z,
+      blockerParentZ: css(parentLayer(blocker)).z,
+      popupParentContext: contextFlags(parentLayer(popup)),
+      blockerParentContext: contextFlags(parentLayer(blocker)),
+      popupAncestryDepth: ancestryPopup.length,
+      blockerAncestryDepth: ancestryBlocker.length,
+      hitStack
     });
   } catch (_) { return JSON.stringify({ status: 'error' }); }
 })()

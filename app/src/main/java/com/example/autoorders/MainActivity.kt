@@ -108,7 +108,7 @@ class MainActivity : ComponentActivity() {
      * Read-only DOM inspection: no clicks, code values, cookies, or account data are collected.
      * Results are shown locally on the device and are never uploaded.
      */
-    private fun inspectSite() {
+    private fun inspectSite(afterFailedFix: Boolean = false) {
         val address = siteView.url.orEmpty()
         val host = Uri.parse(address).host.orEmpty()
         if (!(host == "lxcompintb.com" || host.endsWith(".lxcompintb.com")) || !address.startsWith("https://")) {
@@ -125,6 +125,10 @@ class MainActivity : ComponentActivity() {
                     "Не удалось проверить страницу. Перейди в раздел «Быстрое копирование» и попробуй снова."
                 } else {
                     buildString {
+                        if (afterFailedFix) {
+                            append("Окно всё ещё перекрыто. Изменения отменены. ")
+                            append("Нажатий не выполнялось.\n\n")
+                        }
                         append("Распознанный экран: ")
                         append(result.optString("pageStage", "не определён"))
                         append("\nКнопок «Быстрое копирование»: ")
@@ -173,6 +177,34 @@ class MainActivity : ComponentActivity() {
                             append(result.optString("popupChain", "не определено"))
                             append("\nЦепочка перекрытия: ")
                             append(result.optString("blockerChain", "не определено"))
+                            append("\nОтношение слоёв: ")
+                            append(when (result.optString("layerRelation")) {
+                                "siblings" -> "соседние элементы"
+                                "dialog_inside_blocker" -> "окно внутри затемнения"
+                                "blocker_inside_dialog" -> "затемнение внутри окна"
+                                "separate_parents" -> "разные родительские контейнеры"
+                                else -> "не удалось определить"
+                            })
+                            append("\nОбщий контейнер: ")
+                            append(result.optString("commonParent", "не определён"))
+                            append("\nРодитель окна: ")
+                            append(result.optString("popupParentType", "?"))
+                            append(", z=")
+                            append(result.optString("popupParentZ", "?"))
+                            append(", контекст: ")
+                            append(result.optString("popupParentContext", "?"))
+                            append("\nРодитель затемнения: ")
+                            append(result.optString("blockerParentType", "?"))
+                            append(", z=")
+                            append(result.optString("blockerParentZ", "?"))
+                            append(", контекст: ")
+                            append(result.optString("blockerParentContext", "?"))
+                            append("\nГлубина: окно ")
+                            append(result.optInt("popupAncestryDepth"))
+                            append(", затемнение ")
+                            append(result.optInt("blockerAncestryDepth"))
+                            append("\nСлои в точке кнопки: ")
+                            append(result.optString("hitStack", "недоступно"))
                         }
                         append("\nЭлементов окна подтверждения: ")
                         append(result.optInt("dialogElements", 0))
@@ -251,7 +283,10 @@ class MainActivity : ComponentActivity() {
                 "already_visible", "shifted", "dialog_raised", "overlay_fixed",
                 "shifted_and_dialog_raised", "shifted_and_overlay_fixed"
             )
-            if (!apparentlyExposed) {
+            if (status == "overlay_still_blocked") {
+                // Only read DOM metadata after reverting failed temporary CSS edits.
+                inspectSite(afterFailedFix = true)
+            } else if (!apparentlyExposed) {
                 siteDiagnostics = message
                 showInspectionDialog = true
             } else {
