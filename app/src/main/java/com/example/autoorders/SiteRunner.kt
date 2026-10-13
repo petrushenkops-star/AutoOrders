@@ -11,6 +11,7 @@ class SiteRunner(
     private val view: WebView,
     private val progress: (String) -> Unit,
     private val completed: (OrderStatus, String) -> Unit,
+    private val simulation: Boolean = false,
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private var stage = ""
@@ -30,7 +31,8 @@ class SiteRunner(
         ticks = 0
         confirmationMayHaveBeenSent = false
         active = true
-        progress("Начало обработки заказа. Откройте личный кабинет на вкладке «Сайт».")
+        progress(if (simulation) "Запущена офлайн-симуляция. Реальный сайт не используется."
+            else "Начало обработки заказа. Откройте личный кабинет на вкладке «Сайт».")
         poll()
     }
 
@@ -52,12 +54,20 @@ class SiteRunner(
             return
         }
         val url = view.url ?: ""
-        if (!url.startsWith("https://lxcompintb.com/")) {
+        if (simulation) {
+            if (!url.startsWith("https://appassets.androidplatform.net/simulator/")) {
+                finish(OrderStatus.ERROR, "Офлайн-страница не загружена. Сетевых запросов нет.")
+                return
+            }
+        } else if (!url.startsWith("https://lxcompintb.com/")) {
             progress("Откройте и авторизуйтесь на сайте lxcompintb.com во встроенном браузере")
             handler.postDelayed({ poll() }, 1000)
             return
         }
-        if (script == null) script = view.context.assets.open("driver.js").bufferedReader().use { it.readText() }
+        if (script == null) {
+            val source = view.context.assets.open("driver.js").bufferedReader().use { it.readText() }
+            script = if (simulation) "const __SIMULATOR__ = true;\n" + source else source
+        }
         // Mark uncertainty BEFORE executing a script that may press financial confirmation.
         // A stop/process death between the click and JS callback must not look like failure.
         if (stage == "WAIT_CONFIRM") confirmationMayHaveBeenSent = true
