@@ -1,0 +1,63 @@
+name: Publish downloadable debug APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'downloads/AutoOrders-navigation-debug.apk'
+      - '.github/workflows/publish-debug-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-navigation-debug-apk
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Publish existing APK to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd downloads
+          apk=AutoOrders-navigation-debug.apk
+          test -s "$apk"
+          unzip -tq "$apk"
+          sha256sum "$apk" > "$apk.sha256"
+          digest="$(sha256sum "$apk" | cut -d ' ' -f 1)"
+          tag="navigation-debug-${digest:0:12}"
+          notes="$RUNNER_TEMP/autoorders-debug-release.md"
+          cat > "$notes" <<'NOTES'
+          APK с автоматическим закрытием распознанной рекламы и открытием меню перед «Быстрым копированием».
+
+          Для установки на Android скачайте AutoOrders-navigation-debug.apk из Assets этого выпуска.
+
+          Это debug-сборка с отладочной подписью. Она не является обновлением с постоянной подписью; Android может отклонить установку поверх подписанной release-версии. Не удаляйте установленное приложение, если нужно сохранить его настройки и журнал.
+
+          Вход в аккаунт и ввод нового динамического кода остаются ручными. Автономные тесты и сборка прошли; работа на настоящем сайте ещё требует проверки.
+          NOTES
+          printf '\nSHA-256: `%s`\n' "$digest" >> "$notes"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # A rerun verifies the already published binary without overwriting it.
+            verify_dir="$(mktemp -d "$RUNNER_TEMP/autoorders-release-check.XXXXXX")"
+            gh release download "$tag" --pattern "$apk" --dir "$verify_dir"
+            cmp "$apk" "$verify_dir/$apk"
+          else
+            gh release create "$tag" "$apk" "$apk.sha256" \
+              --target "$GITHUB_SHA" \
+              --title 'AutoOrders — автоматическое меню (debug)' \
+              --notes-file "$notes" --prerelease --latest=false
+          fi
