@@ -325,97 +325,117 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    /** One visual repair at most; never clicks the financial confirmation. */
+    /**
+     * Staged live-site DOM ordering test. Each check happens in a separate
+     * WebView evaluation, after the rendering pipeline has time to update.
+     * No financial button is ever clicked or submitted.
+     */
     private fun testSiteWindow() {
         if (runnerActive || siteWindowTestActive) return
-        val originalUrl = siteView.url.orEmpty()
-        val uri = Uri.parse(originalUrl)
-        val host = uri.host.orEmpty()
-        if (uri.scheme != "https" ||
-            !(host == "lxcompintb.com" || host.endsWith(".lxcompintb.com"))) {
-            siteDiagnostics = "Открой lxcompintb.com во встроенном браузере."
-            showInspectionDialog = true
+        val originalUrl=siteView.url.orEmpty()
+        val host=Uri.parse(originalUrl).host.orEmpty()
+        if (!originalUrl.startsWith("https://") ||
+            !(host=="lxcompintb.com"||host.endsWith(".lxcompintb.com"))) {
+            siteDiagnostics="Открой lxcompintb.com во встроенном браузере."
+            showInspectionDialog=true
             return
         }
-        siteWindowTestActive = true
-        siteDiagnostics = "Проверка окна на сайте. Кнопка «Подтв.» не нажимается."
-        showInspectionDialog = true
-        fun finish(result: String) {
-            if (!siteWindowTestActive || isFinishing || isDestroyed) return
-            siteWindowTestActive = false
-            siteDiagnostics = result + "\n\nДиагностика не нажимала «Подтв.» и не отправляла заказ."
+        siteWindowTestActive=true
+        siteDiagnostics="Тест окна: проверка перекрытия без отправки заказа…"
+        showInspectionDialog=true
+
+        fun finish(report: String) {
+            if (!siteWindowTestActive||isFinishing||isDestroyed) return
+            siteDiagnostics=report+"\n\nКнопка «Подтв.» не нажималась. Заказ не отправлялся."
+            siteWindowTestActive=false
+            showInspectionDialog=true
         }
         fun active(): Boolean {
-            if (!siteWindowTestActive || isFinishing || isDestroyed) return false
-            if (siteView.url != originalUrl) {
+            if (!siteWindowTestActive||isFinishing||isDestroyed) return false
+            if (siteView.url!=originalUrl) {
                 finish("Адрес страницы изменился. Проверка остановлена.")
                 return false
             }
             return true
         }
-        fun inspect(next: (String) -> Unit) {
+        fun evalProbe(phase: String, next: (JSONObject?) -> Unit) {
             if (!active()) return
-            val script = assets.open("page-inspector.js").bufferedReader().use { it.readText() }
-            siteView.evaluateJavascript(script) { raw ->
+            val js=assets.open("deferred-window-probe.js").bufferedReader()
+                .use { it.readText() }.replace("__PROBE_PHASE__",phase)
+            siteView.evaluateJavascript(js) { raw ->
                 if (!active()) return@evaluateJavascript
-                val state = try {
-                    val obj = JSONObject(JSONTokener(raw).nextValue() as String)
-                    if (obj.optString("status") == "ok" &&
-                        obj.optString("pageStage") == "Подтверждение заказа" &&
-                        obj.optInt("confirmButtons") == 1 && obj.optInt("dialogElements") >= 1)
-                        obj.optString("confirmState", "unknown") else "unknown"
-                } catch (_: Exception) { "unknown" }
-                next(state)
+                val value=try {
+                    JSONObject(JSONTokener(raw).nextValue() as String)
+                } catch (_: Exception) { null }
+                next(value)
             }
         }
-        inspect start@{ before ->
-            if (!active()) return@start
-            if (before != "covered") {
-                finish("До исправления: $before. Исправление не запускалось.")
-                return@start
+        fun rollback(report: String) {
+            evalProbe("rollback") { restored ->
+                finish(report+"\nОткат: "+(restored?.optString("status")?:"нет ответа")+".")
             }
-            val script = assets.open("reveal-confirmation.js").bufferedReader()
-                .use { it.readText() }
-            siteView.evaluateJavascript(script) repaired@{ raw ->
-                if (!active()) return@repaired
-                val result = try {
-                    JSONObject(JSONTokener(raw).nextValue() as String)
-                        .optString("status", "unknown")
-                } catch (_: Exception) { "unknown" }
-                val success = setOf(
-                    "already_visible", "shifted", "dialog_raised", "overlay_fixed",
-                    "shifted_and_dialog_raised", "shifted_and_overlay_fixed",
-                    "dom_reordered", "shifted_and_dom_reordered"
-                )
-                if (result !in success) {
-                    finish("До исправления: covered.\nПопытка: $result. " +
-                        "Доступность кнопки не подтверждена.")
-                    return@repaired
+        }
+        val inspector=assets.open("page-inspector.js").bufferedReader().use { it.readText() }
+        siteView.evaluateJavascript(inspector) baseline@{ raw ->
+            if (!active()) return@baseline
+            val before=try {
+                val r=JSONObject(JSONTokener(raw).nextValue() as String)
+                if (r.optString("status")=="ok" &&
+                    r.optString("pageStage")=="Подтверждение заказа" &&
+                    r.optInt("confirmButtons")==1 && r.optInt("dialogElements")>=1)
+                    r.optString("confirmState") else "unknown"
+            } catch (_: Exception) { "unknown" }
+            if (before!="covered") {
+                finish("До исправления: $before. Перестановка не выполнялась.")
+                return@baseline
+            }
+            evalProbe("start") started@{ start ->
+                val startStatus=start?.optString("status")?:"no_response"
+                if (startStatus!="reordered" || !start.optBoolean("afterOverlay")) {
+                    if (startStatus=="reordered")
+                        rollback("Начальный порядок слоёв не подтверждён.")
+                    else finish("До исправления: covered.\nПерестановка: $startStatus.")
+                    return@started
                 }
-                siteDiagnostics = "До исправления: covered.\nМетод: $result." +
-                    "\nПроверяю устойчивость через 1 и 3 секунды…"
-                siteWindowTestHandler.postDelayed(one@{
-                    if (!active()) return@one
-                    inspect firstRead@{ first ->
-                        if (!active()) return@firstRead
-                        if (first != "visible") {
-                            finish("До исправления: covered.\nМетод: $result." +
-                                "\nЧерез 1 секунду: $first. Исправление не удержалось.")
+                val immediate=start.optString("immediate","unknown")
+                siteDiagnostics="До изменения: covered.\nПерестановка DOM: выполнена."+
+                    "\nСразу после изменения: $immediate.\nЖду обновления WebView…"
+                siteWindowTestHandler.postDelayed(checkOne@{
+                    if (!active()) return@checkOne
+                    evalProbe("check") first@{ r ->
+                        val state=if (r?.optString("status")=="checked" &&
+                            r.optBoolean("afterOverlay")) r.optString("state") else "unknown"
+                        if (state!="visible") {
+                            rollback("Сразу: $immediate.\nЧерез 0,5 секунды: $state."+
+                                "\nИсправление не подтвердилось.")
                         } else {
-                            siteWindowTestHandler.postDelayed(three@{
-                                if (!active()) return@three
-                                inspect lastRead@{ last ->
-                                    if (!active()) return@lastRead
-                                    finish("До исправления: covered.\nМетод: $result." +
-                                        "\nЧерез 1 секунду: visible." +
-                                        "\nЧерез 3 секунды: $last.\n" +
-                                        (if (last == "visible") "Окно доступно."
-                                         else "Доступность окна не сохранилась."))
+                            siteWindowTestHandler.postDelayed(checkTwo@{
+                                if (!active()) return@checkTwo
+                                evalProbe("check") second@{ last ->
+                                    val finalState=if (last?.optString("status")=="checked" &&
+                                        last.optBoolean("afterOverlay"))
+                                        last.optString("state") else "unknown"
+                                    if (finalState!="visible") {
+                                        rollback("Сразу: $immediate.\nЧерез 0,5 секунды: visible."+
+                                            "\nЧерез 2 секунды: $finalState."+
+                                            "\nИзменение отменено.")
+                                    } else {
+                                        evalProbe("commit") committed@{ commit ->
+                                            if (commit?.optString("status")=="confirmed_visible")
+                                                finish("До исправления: covered."+
+                                                    "\nМетод: отложенная перестановка DOM."+
+                                                    "\nСразу: $immediate."+
+                                                    "\nЧерез 0,5 секунды: visible."+
+                                                    "\nЧерез 2 секунды: visible."+
+                                                    "\nОкно остаётся доступным.")
+                                            else rollback("Не удалось подтвердить устойчивость.")
+                                        }
+                                    }
                                 }
-                            }, 2000)
+                            },1500)
                         }
                     }
-                }, 1000)
+                },500)
             }
         }
     }
