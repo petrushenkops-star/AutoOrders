@@ -4,7 +4,7 @@
  * All steps are idempotent at app level: no automatic replay of unknown financial results.
  */
 (function () {
-  const visible = e => !!(e && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+  const visible = e => !!(e && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).display !== 'none');
   const norm = s => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const text = norm(document.body?.innerText || '');
   const elements = () => [...document.querySelectorAll('button, a, [role="button"], input[type="submit"], .van-button')].filter(visible);
@@ -34,11 +34,37 @@
   if (simulated ? !isolated : !realSite) return report('error', 'Неверный адрес сайта');
   if (!document.body) return report('wait', 'Загрузка страницы');
   if (/неверный ввод динамического пароля|неправильный динамический пароль/.test(text)) return report('error', 'Сайт отклонил цифровой код');
-  if (stage === 'OPEN_COPY') {
+  if (stage === 'OPEN_COPY' || stage === 'WAIT_MENU') {
+    // Only dismiss an image announcement, never a code/order/result dialog.
+    const popups = [...document.querySelectorAll('[role="dialog"], .van-dialog, .van-popup')].filter(visible);
+    const announcements = popups.filter(p => p.querySelector?.('img') &&
+      !p.querySelector('input, textarea, form') &&
+      !/динамический пароль|сумма заказа|вы уверены|подтв\.|заказ выполнен|недостаточно средств|быстрое копирование|центр безопасности|балансы/.test(norm(p.innerText)));
+    if (announcements.length > 1) return report('error', 'Найдено несколько рекламных окон; закройте их вручную');
+    if (announcements.length === 1) {
+      const close = [...announcements[0].querySelectorAll(
+        '.van-popup__close-icon, .van-icon-cross, button[aria-label], [role="button"][aria-label], button, [role="button"]'
+      )].filter(e => visible(e) && (e.matches?.('.van-popup__close-icon, .van-icon-cross') ||
+        /^(закрыть|close|×|✕|✖|x)$/.test(norm(e.getAttribute('aria-label') || e.innerText))));
+      if (close.length !== 1 || !userReachable(close[0])) return report('wait', 'Не удалось однозначно найти доступную кнопку закрытия рекламы');
+      if (!safeClick(close[0])) return report('wait', 'Кнопка закрытия рекламы недоступна');
+      return report('wait', 'Закрытие рекламного окна');
+    }
     if (text.includes('динамический пароль')) return report('advance', 'ENTER_CODE');
     const menuButton = buttons('Быстрое копирование');
-    if (menuButton.length === 1 && safeClick(menuButton[0])) return report('advance', 'ENTER_CODE');
-    return report('wait', 'Откройте меню личного кабинета и убедитесь, что видна кнопка «Быстрое копирование»');
+    if (menuButton.length === 1 && userReachable(menuButton[0]) && safeClick(menuButton[0])) return report('advance', 'ENTER_CODE');
+    if (menuButton.length > 1) return report('error', 'Найдено несколько кнопок «Быстрое копирование»');
+    if (popups.length) return report('wait', 'Закройте открытое окно перед открытием меню');
+    // Never toggle the menu again while waiting for its contents to render.
+    if (stage === 'WAIT_MENU') return report('wait', 'Ожидание меню личного кабинета');
+    const menu = [...document.querySelectorAll(
+      '.van-icon-bars, .van-icon-wap-nav, button[aria-label], [role="button"][aria-label], [aria-haspopup="menu"]'
+    )].filter(e => visible(e) && (e.matches?.('.van-icon-bars, .van-icon-wap-nav') ||
+      /^(меню|открыть меню|menu|open menu)$/.test(norm(e.getAttribute('aria-label')))));
+    if (menu.length !== 1) return report('wait', 'Кнопка меню не найдена однозначно; откройте меню вручную');
+    if (!userReachable(menu[0])) return report('wait', 'Кнопка меню перекрыта или недоступна');
+    if (!safeClick(menu[0])) return report('wait', 'Кнопка меню недоступна');
+    return report('advance', 'WAIT_MENU');
   }
   if (stage === 'ENTER_CODE') {
     if (!text.includes('динамический пароль')) return report('wait', 'Ожидание формы цифрового кода');

@@ -32,7 +32,7 @@ class SiteRunner(
         confirmationMayHaveBeenSent = false
         active = true
         progress(if (simulation) "Запущена офлайн-симуляция. Реальный сайт не используется."
-            else "Начало обработки заказа. Откройте личный кабинет на вкладке «Сайт».")
+            else "Начало обработки заказа. Подготовка меню личного кабинета на вкладке «Сайт».")
         poll()
     }
 
@@ -84,8 +84,9 @@ class SiteRunner(
                 when (obj.optString("status")) {
                     "advance" -> {
                         stage = obj.optString("detail")
-                        if (stage != "ENTER_CODE") code = "" // Code has been submitted after ENTER_CODE; do not keep it.
+                        if (stage == "WAIT_DETAILS") code = "" // Keep the code during menu preparation; clear it after submission.
                         progress(when (stage) {
+                            "WAIT_MENU" -> "Открытие меню личного кабинета"
                             "ENTER_CODE" -> "Подготовка поля цифрового кода"
                             "WAIT_DETAILS" -> "Код отправлен, ожидание параметров заказа"
                             "WAIT_CONFIRM" -> "Ожидание подтверждения суммы"

@@ -16,8 +16,8 @@ function test(stage, code, bodyText, buttonNames, inputNeeded, expected, clicked
     location: {host: 'lxcompintb.com', protocol: 'https:'},
     document: {
       body: {innerText: bodyText},
-      querySelectorAll(selector) {return selector.startsWith('input:') ? (inputNeeded ? [input] : []) : buttons},
-      elementFromPoint(){return covered?{className:'van-overlay'}:buttons.find(b=>b.innerText==='Подтв.')}
+      querySelectorAll(selector) {return selector.startsWith('input:') ? (inputNeeded ? [input] : []) : selector.startsWith('button, a,') ? buttons : []},
+      elementFromPoint(){return covered?{className:'van-overlay'}:buttons.find(b=>b.innerText==='Подтв.') || buttons[0]}
     },
     window: {innerWidth:390,innerHeight:703},
     getComputedStyle: () => ({visibility:'visible',display:'block'}),
