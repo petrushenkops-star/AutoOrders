@@ -56,6 +56,13 @@ window.autoordersSimulator=Object.freeze({
  // A single button opens the test confirmation in the currently selected mode.
  // This does not contact lxcompintb.com and does not submit anything.
  showConfirmation(){stage="confirm";render();return true;},
+ // Simulate a site SPA render replacing the original dialog and overlay nodes.
+ // Do not change the current scenario or generate an order.
+ rerenderConfirmation(){
+   if(stage!=="confirm")return false;
+   render();
+   return true;
+ },
  state(){return stage;}
 });
 render();

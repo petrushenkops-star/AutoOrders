@@ -133,6 +133,10 @@ class SimulatorActivity : ComponentActivity() {
                         OutlinedButton(enabled = loaded && !running,
                             onClick = { revealPage() }) { Text("Исправить перекрытие") }
                     }
+                    OutlinedButton(enabled = loaded && !running,
+                        onClick = { rerenderTestDialog() }) {
+                        Text("Перерисовать окно (тест)")
+                    }
                     Text(message, style = MaterialTheme.typography.bodySmall)
                     if (diagnostics.isNotBlank()) {
                         Text(diagnostics, style = MaterialTheme.typography.bodySmall)
@@ -168,6 +172,24 @@ class SimulatorActivity : ComponentActivity() {
                 diagnostics = ""
             } else {
                 message = "Не удалось открыть тестовое окно. Нажми «Сброс» и попробуй снова."
+            }
+        }
+    }
+
+    /** Recreates only the local mock dialog, just as a SPA might do after a re-render. */
+    private fun rerenderTestDialog() {
+        if (!loaded || running) return
+        demo.evaluateJavascript("window.autoordersSimulator.rerenderConfirmation()") { result ->
+            if (result == "true") {
+                message = "Тестовое окно пересоздано. Снова проверяю перекрытие; " +
+                    "предыдущее исправление могло исчезнуть."
+                diagnostics = ""
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (!isFinishing && !isDestroyed) inspectPage()
+                }, 500)
+            } else {
+                message = "Сначала нажми «Открыть тестовое окно». " +
+                    "На других экранах перерисовка не выполняется."
             }
         }
     }

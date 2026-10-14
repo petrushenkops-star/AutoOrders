@@ -3,9 +3,9 @@ const page=fs.readFileSync("app/src/main/assets/simulator.html","utf8");
 const js=fs.readFileSync("app/src/main/assets/simulator.js","utf8");
 assert.match(page,/connect-src 'none'/);assert.match(page,/data-autoorders-simulator="v1"/);
 assert.doesNotMatch(js,/fetch\s*\(|XMLHttpRequest|localStorage|sendBeacon|document\.cookie/);
-let html="",actions={};
+let html="",actions={},renderCount=0;
 const root={getAttribute(){return "v1"},
- set innerHTML(s){html=s;actions={}},get innerHTML(){return html},
+ set innerHTML(s){html=s;actions={};renderCount++},get innerHTML(){return html},
  insertAdjacentHTML(_,s){html+=s},
  querySelector(){return {value:"123456"}},
  querySelectorAll(){return [...html.matchAll(/data-action="([^"]+)"/g)].map(m=>({
@@ -28,6 +28,7 @@ assert.equal(sim.reset("hang","normal"),true);
 click("open");click("send");click("copy");click("confirm");
 assert.equal(sim.state(),"hang");
 assert.equal(sim.reset("unexpected","normal"),false);
+assert.equal(sim.rerenderConfirmation(),false); // not currently at confirmation
 assert.match(page,/transition:\s*z-index 90s steps\(1,end\)/);
 assert.equal(sim.reset("success","stubborn"),true);
 assert.equal(sim.showConfirmation(),true);
@@ -42,6 +43,30 @@ for (let i=0;i<3;i++){
  assert.equal(sim.showConfirmation(),true);
  assert.equal(sim.state(),"confirm");
 }
+// A site can replace the dialog AFTER the previous fix. Verify that the
+// simulator recreates its nodes, restores the original covered sibling order
+// and never submits a test order as a side effect.
+assert.equal(sim.reset("success","stubborn"),true);
+assert.equal(sim.showConfirmation(),true);
+const rendersBefore = renderCount;
+const coveredHtml = html;
+assert.equal(sim.rerenderConfirmation(),true);
+assert.equal(renderCount,rendersBefore+1);
+assert.equal(sim.state(),"confirm");
+assert.equal(html,coveredHtml);
+assert.ok(html.indexOf("van-dialog stubborn-layer") <
+          html.indexOf("van-overlay stubborn-layer"));
+assert.ok(!html.includes("Заказ выполнен успешно"));
+for(let i=0;i<3;i++){
+ const prev=renderCount;
+ assert.equal(sim.rerenderConfirmation(),true);
+ assert.equal(renderCount,prev+1);
+ assert.equal(sim.state(),"confirm");
+}
+assert.equal(sim.reset("success","normal"),true);
+assert.equal(sim.showConfirmation(),true);
+assert.equal(sim.rerenderConfirmation(),true);
+assert.ok(html.indexOf("van-overlay") < html.indexOf("van-dialog"));
 // Directly open the confirmation even after reset, preserving the blocked mode.
 assert.equal(sim.reset("success","blocked"),true);
 assert.equal(sim.state(),"menu");
@@ -78,6 +103,8 @@ assert.match(kotlin,/window\.autoordersSimulator\.showConfirmation\(\)/);
 assert.match(kotlin,/Открыть тестовое окно/);
 assert.match(kotlin,/Исправить перекрытие/);
 assert.match(kotlin,/Сложное перекрытие/);
+assert.match(kotlin,/Перерисовать окно/);
+assert.match(kotlin,/window\.autoordersSimulator\.rerenderConfirmation\(\)/);
 assert.match(kotlin,/Резервное исправление/);
 assert.ok(kotlin.includes("const __SIMULATOR__ = true; return ("));
 const siteRunner=fs.readFileSync("app/src/main/java/com/example/autoorders/SiteRunner.kt","utf8");
