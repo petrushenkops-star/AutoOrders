@@ -63,18 +63,15 @@ assert.equal(failure.run('rollback').status,'restored');
 assert.deepEqual(failure.counts(),{clicks:0,moves:1,restores:1});
 assert.equal(failure.run('rollback').status,'no_active_probe');
 assert.equal(scenario('example.com').run('start').status,'invalid_page');
+// The previous staged DOM probe remains covered by the mock tests above.
+// The active real-site button has moved to read-only geometry diagnostics.
 const main=fs.readFileSync('app/src/main/java/com/example/autoorders/MainActivity.kt','utf8');
 const start=main.indexOf('private fun testSiteWindow()');
 const end=main.indexOf('private var activeOrderId:',start);
 assert.ok(start>=0&&end>start);
 const test=main.slice(start,end);
-assert.match(test,/deferred-window-probe\.js/);
-assert.match(test,/evalProbe\("rollback"\)/);
-assert.match(test,/evalProbe\("commit"\)/);
-assert.match(test,/postDelayed\(checkOne@/);
-assert.match(test,/postDelayed\(checkTwo@/);
-assert.match(test,/fun layerInfo\(data: JSONObject\?\)/);
-assert.match(test,/Через 0,5 секунды/);
-assert.match(test,/Через 2 секунды/);
-assert.doesNotMatch(test,/siteRunner\.start|\.click\(|\.submit\(/);
-console.log('Deferred live overlay probe: staged checks and rollback passed');
+assert.match(test,/window-geometry-probe\.js/);
+assert.match(test,/readSnapshot first@/);
+assert.match(test,/readSnapshot last@/);
+assert.doesNotMatch(test,/deferred-window-probe|insertBefore|siteRunner\.start|\.click\(|\.submit\(/);
+console.log('Legacy staged overlay mock and current read-only safety contracts passed');
