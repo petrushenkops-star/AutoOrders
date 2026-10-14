@@ -134,3 +134,24 @@ for(let i=0;i<5;i++){
   assert.equal(JSON.parse(vm.runInContext(isolated(preparedDriver),scope)).status,"wait");
 }
 console.log("Simulator scenarios, repeated WebView evaluations, origin isolation and offline checks passed");
+
+
+// Real-site diagnostic contract: only inspect and change visual stacking,
+// without initiating financial confirmation or entering a code.
+const mainCode=fs.readFileSync("app/src/main/java/com/example/autoorders/MainActivity.kt","utf8");
+const startProbe=mainCode.indexOf("private fun testSiteWindow()");
+const endProbe=mainCode.indexOf("private var activeOrderId:",startProbe);
+assert.ok(startProbe>=0&&endProbe>startProbe);
+const probeCode=mainCode.slice(startProbe,endProbe);
+assert.match(probeCode,/page-inspector\.js/);
+assert.match(probeCode,/reveal-confirmation\.js/);
+assert.match(probeCode,/initialUrl|originalUrl/);
+assert.match(probeCode,/before != "covered"/);
+assert.match(probeCode,/first != "visible"/);
+assert.match(probeCode,/last == "visible"/);
+assert.match(probeCode,/confirmButtons/);
+assert.match(probeCode,/dialogElements/);
+assert.doesNotMatch(probeCode,/siteRunner\.start|\.click\(|\.submit\(|submittedCode/);
+assert.match(mainCode,/Тест окна без заказа/);
+assert.match(mainCode,/Тест окна/);
+assert.match(mainCode,/siteWindowTestHandler\.removeCallbacksAndMessages/);
