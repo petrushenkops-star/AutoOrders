@@ -28,6 +28,10 @@ class SimulatorActivity : ComponentActivity() {
     private var outcome by mutableStateOf("success")
     private var covering by mutableStateOf("normal")
     private var diagnostics by mutableStateOf("")
+    private var cycleRunning by mutableStateOf(false)
+    private var cycleSummary by mutableStateOf("")
+    private var cycleTrace by mutableStateOf<List<String>>(emptyList())
+    private val cycleHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,52 +94,63 @@ class SimulatorActivity : ComponentActivity() {
                         listOf("success" to "Успех", "error" to "Ошибка", "hang" to "Нет ответа")
                             .forEach { (value, title) ->
                                 OutlinedButton(
-                                    enabled = loaded && !running,
+                                    enabled = loaded && !running && !cycleRunning,
                                     onClick = { outcome = value; resetPage() }
                                 ) { Text((if (outcome == value) "✓ " else "") + title) }
                             }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedButton(enabled = loaded && !running,
+                        OutlinedButton(enabled = loaded && !running && !cycleRunning,
                             onClick = { covering = "normal"; resetPage() }) {
                             Text((if (covering == "normal") "✓ " else "") + "Видно")
                         }
-                        OutlinedButton(enabled = loaded && !running,
+                        OutlinedButton(enabled = loaded && !running && !cycleRunning,
                             onClick = { covering = "blocked"; resetPage() }) {
                             Text((if (covering == "blocked") "✓ " else "") + "Перекрыто")
                         }
                     }
                     OutlinedButton(
-                        enabled = loaded && !running,
+                        enabled = loaded && !running && !cycleRunning,
                         onClick = { covering = "stubborn"; resetPage() }
                     ) {
                         Text((if (covering == "stubborn") "✓ " else "") +
                             "Сложное перекрытие (тест DOM)")
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Button(enabled = loaded && !running, onClick = {
+                        Button(enabled = loaded && !running && !cycleRunning, onClick = {
                             running = true
                             runner.start("123456")
                         }) { Text("Тест") }
                         OutlinedButton(enabled = running, onClick = { runner.stop() }) {
                             Text("СТОП")
                         }
-                        OutlinedButton(enabled = loaded && !running,
+                        OutlinedButton(enabled = loaded && !running && !cycleRunning,
                             onClick = { resetPage() }) { Text("Сброс") }
                     }
                     Button(
-                        enabled = loaded && !running,
+                        enabled = loaded && !running && !cycleRunning,
                         onClick = { openTestDialog() }
                     ) { Text("Открыть тестовое окно") }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedButton(enabled = loaded && !running,
+                        OutlinedButton(enabled = loaded && !running && !cycleRunning,
                             onClick = { inspectPage() }) { Text("Проверить") }
-                        OutlinedButton(enabled = loaded && !running,
+                        OutlinedButton(enabled = loaded && !running && !cycleRunning,
                             onClick = { revealPage() }) { Text("Исправить перекрытие") }
                     }
-                    OutlinedButton(enabled = loaded && !running,
+                    OutlinedButton(enabled = loaded && !running && !cycleRunning,
                         onClick = { rerenderTestDialog() }) {
                         Text("Перерисовать окно (тест)")
+                    }
+                    Button(enabled = loaded && !running && !cycleRunning,
+                        onClick = { runFullCycle() }) {
+                        Text("Полный тест окна (без заказов)")
+                    }
+                    if (cycleSummary.isNotBlank()) {
+                        Text(cycleSummary, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (cycleTrace.isNotEmpty()) {
+                        Text(cycleTrace.joinToString("\n"),
+                            style = MaterialTheme.typography.bodySmall)
                     }
                     Text(message, style = MaterialTheme.typography.bodySmall)
                     if (diagnostics.isNotBlank()) {
@@ -148,6 +163,95 @@ class SimulatorActivity : ComponentActivity() {
                         },
                         modifier = Modifier.fillMaxWidth().weight(1f)
                     )
+                }
+            }
+        }
+    }
+
+    /** All actions below are restricted to the simulator's network-blocked WebView. */
+    private fun runFullCycle() {
+        if (!loaded || running || cycleRunning) return
+        cycleRunning = true
+        covering = "stubborn"
+        outcome = "success"
+        cycleTrace = emptyList()
+        cycleSummary = "Проверяю полный цикл: перекрытие → исправление → перерисовка → восстановление"
+        diagnostics = ""
+        message = "Полный тест не нажимает «Подтв.» и не отправляет заказ."
+
+        fun alive() = cycleRunning && !isFinishing && !isDestroyed
+        fun fail(problem: String) {
+            if (!alive()) return
+            cycleSummary = "Тест не пройден: $problem"
+            cycleRunning = false
+        }
+        fun step(label: String, state: String) {
+            cycleTrace = cycleTrace + "$label: $state"
+        }
+        fun inspect(label: String, expected: String, next: () -> Unit) {
+            executeScript("page-inspector.js") { data ->
+                if (!alive()) return@executeScript
+                val observed = data?.optString("confirmState", "no_response") ?: "no_response"
+                step(label, observed)
+                if (observed != expected) {
+                    fail("на этапе «$label» ожидалось $expected, получено $observed")
+                } else {
+                    next()
+                }
+            }
+        }
+        fun repair(next: () -> Unit) {
+            executeScript("reveal-confirmation.js") { data ->
+                if (!alive()) return@executeScript
+                val status = data?.optString("status", "no_response") ?: "no_response"
+                if (status != "dom_reordered" && status != "shifted_and_dom_reordered") {
+                    fail("резервное исправление не подтвердилось ($status)")
+                } else {
+                    cycleHandler.postDelayed({
+                        if (alive()) next()
+                    }, 350)
+                }
+            }
+        }
+        demo.evaluateJavascript(
+            "window.autoordersSimulator.reset(\"success\",\"stubborn\",2004,2004)"
+        ) reset@{ resetResult ->
+            if (!alive()) return@reset
+            if (resetResult != "true") {
+                fail("не удалось сбросить тестовую страницу")
+                return@reset
+            }
+            demo.evaluateJavascript("window.autoordersSimulator.showConfirmation()") opened@{ opened ->
+                if (!alive()) return@opened
+                if (opened != "true") {
+                    fail("не удалось открыть тестовое окно")
+                    return@opened
+                }
+                inspect("1. Первое перекрытие", "covered") {
+                    repair {
+                        inspect("2. Первое исправление", "visible") {
+                            demo.evaluateJavascript(
+                                "window.autoordersSimulator.rerenderConfirmation()"
+                            ) rerender@{ result ->
+                                if (!alive()) return@rerender
+                                if (result != "true") {
+                                    fail("перерисовка не выполнена")
+                                    return@rerender
+                                }
+                                cycleHandler.postDelayed({
+                                    if (alive()) inspect("3. После перерисовки", "covered") {
+                                        repair {
+                                            inspect("4. Повторное исправление", "visible") {
+                                                cycleSummary = "Полный тест пройден: 4 из 4 проверок. " +
+                                                    "Заказов не было."
+                                                cycleRunning = false
+                                            }
+                                        }
+                                    }
+                                }, 350)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -255,6 +359,8 @@ class SimulatorActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        cycleRunning = false
+        cycleHandler.removeCallbacksAndMessages(null)
         if (::runner.isInitialized && runner.isActive()) runner.stop()
         if (::demo.isInitialized) demo.destroy()
         super.onDestroy()
