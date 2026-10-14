@@ -38,6 +38,7 @@ jobs:
           node tests/driver-smoke.js
           node tests/page-inspector-smoke.js
           node tests/reveal-confirmation-smoke.js
+          node tests/deferred-window-probe-smoke.js
           node tests/simulator-smoke.js
       - name: Unit tests and debug compilation
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
