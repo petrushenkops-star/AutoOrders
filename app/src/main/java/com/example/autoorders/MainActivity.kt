@@ -56,6 +56,8 @@ class MainActivity : ComponentActivity() {
     private var siteError by mutableStateOf<String?>(null)
     private var siteDiagnostics by mutableStateOf("Диагностика ещё не выполнялась")
     private var showInspectionDialog by mutableStateOf(false)
+    private var siteWindowTestActive by mutableStateOf(false)
+    private val siteWindowTestHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var runnerActive by mutableStateOf(false)
     private var notificationOrderId by mutableStateOf<String?>(null)
 
@@ -322,6 +324,102 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+    /** One visual repair at most; never clicks the financial confirmation. */
+    private fun testSiteWindow() {
+        if (runnerActive || siteWindowTestActive) return
+        val originalUrl = siteView.url.orEmpty()
+        val uri = Uri.parse(originalUrl)
+        val host = uri.host.orEmpty()
+        if (uri.scheme != "https" ||
+            !(host == "lxcompintb.com" || host.endsWith(".lxcompintb.com"))) {
+            siteDiagnostics = "Открой lxcompintb.com во встроенном браузере."
+            showInspectionDialog = true
+            return
+        }
+        siteWindowTestActive = true
+        siteDiagnostics = "Проверка окна на сайте. Кнопка «Подтв.» не нажимается."
+        showInspectionDialog = true
+        fun finish(result: String) {
+            if (!siteWindowTestActive || isFinishing || isDestroyed) return
+            siteWindowTestActive = false
+            siteDiagnostics = result + "\n\nДиагностика не нажимала «Подтв.» и не отправляла заказ."
+        }
+        fun active(): Boolean {
+            if (!siteWindowTestActive || isFinishing || isDestroyed) return false
+            if (siteView.url != originalUrl) {
+                finish("Адрес страницы изменился. Проверка остановлена.")
+                return false
+            }
+            return true
+        }
+        fun inspect(next: (String) -> Unit) {
+            if (!active()) return
+            val script = assets.open("page-inspector.js").bufferedReader().use { it.readText() }
+            siteView.evaluateJavascript(script) { raw ->
+                if (!active()) return@evaluateJavascript
+                val state = try {
+                    val obj = JSONObject(JSONTokener(raw).nextValue() as String)
+                    if (obj.optString("status") == "ok" &&
+                        obj.optString("pageStage") == "Подтверждение заказа" &&
+                        obj.optInt("confirmButtons") == 1 && obj.optInt("dialogElements") >= 1)
+                        obj.optString("confirmState", "unknown") else "unknown"
+                } catch (_: Exception) { "unknown" }
+                next(state)
+            }
+        }
+        inspect start@{ before ->
+            if (!active()) return@start
+            if (before != "covered") {
+                finish("До исправления: $before. Исправление не запускалось.")
+                return@start
+            }
+            val script = assets.open("reveal-confirmation.js").bufferedReader()
+                .use { it.readText() }
+            siteView.evaluateJavascript(script) repaired@{ raw ->
+                if (!active()) return@repaired
+                val result = try {
+                    JSONObject(JSONTokener(raw).nextValue() as String)
+                        .optString("status", "unknown")
+                } catch (_: Exception) { "unknown" }
+                val success = setOf(
+                    "already_visible", "shifted", "dialog_raised", "overlay_fixed",
+                    "shifted_and_dialog_raised", "shifted_and_overlay_fixed",
+                    "dom_reordered", "shifted_and_dom_reordered"
+                )
+                if (result !in success) {
+                    finish("До исправления: covered.\nПопытка: $result. " +
+                        "Доступность кнопки не подтверждена.")
+                    return@repaired
+                }
+                siteDiagnostics = "До исправления: covered.\nМетод: $result." +
+                    "\nПроверяю устойчивость через 1 и 3 секунды…"
+                siteWindowTestHandler.postDelayed(one@{
+                    if (!active()) return@one
+                    inspect firstRead@{ first ->
+                        if (!active()) return@firstRead
+                        if (first != "visible") {
+                            finish("До исправления: covered.\nМетод: $result." +
+                                "\nЧерез 1 секунду: $first. Исправление не удержалось.")
+                        } else {
+                            siteWindowTestHandler.postDelayed(three@{
+                                if (!active()) return@three
+                                inspect lastRead@{ last ->
+                                    if (!active()) return@lastRead
+                                    finish("До исправления: covered.\nМетод: $result." +
+                                        "\nЧерез 1 секунду: visible." +
+                                        "\nЧерез 3 секунды: $last.\n" +
+                                        (if (last == "visible") "Окно доступно."
+                                         else "Доступность окна не сохранилась."))
+                                }
+                            }, 2000)
+                        }
+                    }
+                }, 1000)
+            }
+        }
+    }
+
     private var activeOrderId: String? = null
 
     override fun onNewIntent(intent: Intent) {
@@ -381,7 +479,7 @@ class MainActivity : ComponentActivity() {
         }
         if (showInspectionDialog) {
             AlertDialog(
-                onDismissRequest = { showInspectionDialog = false },
+                onDismissRequest = { if (!siteWindowTestActive) showInspectionDialog = false },
                 title = { Text("Диагностика окна") },
                 text = {
                     Column(
@@ -389,7 +487,8 @@ class MainActivity : ComponentActivity() {
                     ) { Text(siteDiagnostics) }
                 },
                 confirmButton = {
-                    TextButton(onClick = { showInspectionDialog = false }) { Text("Закрыть") }
+                    TextButton(onClick = { showInspectionDialog = false },
+                        enabled = !siteWindowTestActive) { Text("Закрыть") }
                 }
             )
         }
@@ -407,12 +506,12 @@ class MainActivity : ComponentActivity() {
                             Text("← Назад")
                         }
                         TextButton(
-                            onClick = { revealConfirmationDialog() },
-                            enabled = !runnerActive
-                        ) { Text("Показать окно") }
+                            onClick = { testSiteWindow() },
+                            enabled = !runnerActive && !siteWindowTestActive
+                        ) { Text("Тест окна") }
                         TextButton(
                             onClick = { inspectSite() },
-                            enabled = !runnerActive
+                            enabled = !runnerActive && !siteWindowTestActive
                         ) { Text("Проверить") }
                     }
                 }
@@ -536,7 +635,7 @@ class MainActivity : ComponentActivity() {
                                             runnerActive = true
                                             siteRunner.start(submittedCode)
                                         }
-                                    }, enabled = code.isNotBlank() && !runnerActive && (!live || siteError == null), modifier = Modifier.fillMaxWidth()) {
+                                    }, enabled = code.isNotBlank() && !runnerActive && !siteWindowTestActive && (!live || siteError == null), modifier = Modifier.fillMaxWidth()) {
                                         Text(if (live) "Выполнить заказ на сайте" else "Проверить тестовый сценарий")
                                     }
                                     TextButton(onClick = {
@@ -612,8 +711,12 @@ class MainActivity : ComponentActivity() {
                         }) { Text("Открыть сайт в Chrome") }
                         OutlinedButton(
                             onClick = { inspectSite() },
-                            enabled = !runnerActive
+                            enabled = !runnerActive && !siteWindowTestActive
                         ) { Text("Проверить элементы страницы") }
+                        OutlinedButton(onClick = { testSiteWindow() },
+                            enabled = !runnerActive && !siteWindowTestActive) {
+                            Text("Тест окна без заказа")
+                        }
                         Text(siteDiagnostics, style = MaterialTheme.typography.bodySmall)
                         OutlinedButton(
                             onClick = { fullScreenSite = true },
@@ -644,6 +747,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        siteWindowTestActive = false
+        siteWindowTestHandler.removeCallbacksAndMessages(null)
         if (siteRunner.isActive()) siteRunner.stop()
         siteView.destroy()
         super.onDestroy()
