@@ -326,134 +326,96 @@ class MainActivity : ComponentActivity() {
 
 
     /**
-     * Staged live-site DOM ordering test. Each check happens in a separate
-     * WebView evaluation, after the rendering pipeline has time to update.
-     * No financial button is ever clicked or submitted.
+     * Geometry-only diagnostic on the real site, with two independent snapshots.
+     * No DOM changes, attempts to click, form submission, or order scheduling.
      */
     private fun testSiteWindow() {
         if (runnerActive || siteWindowTestActive) return
-        val originalUrl=siteView.url.orEmpty()
-        val host=Uri.parse(originalUrl).host.orEmpty()
-        if (!originalUrl.startsWith("https://") ||
+        val initialUrl=siteView.url.orEmpty()
+        val uri=Uri.parse(initialUrl)
+        val host=uri.host.orEmpty()
+        if (uri.scheme!="https" ||
             !(host=="lxcompintb.com"||host.endsWith(".lxcompintb.com"))) {
             siteDiagnostics="Открой lxcompintb.com во встроенном браузере."
             showInspectionDialog=true
             return
         }
         siteWindowTestActive=true
-        siteDiagnostics="Тест окна: проверка перекрытия без отправки заказа…"
+        siteDiagnostics="Считываю геометрию окна без изменения сайта…"
         showInspectionDialog=true
-
-        fun finish(report: String) {
+        fun finish(report:String) {
             if (!siteWindowTestActive||isFinishing||isDestroyed) return
-            siteDiagnostics=report+"\n\nКнопка «Подтв.» не нажималась. Заказ не отправлялся."
+            siteDiagnostics=report+"\n\nТест только считывает геометрию. "+
+                "Кнопка «Подтв.» не нажималась, заказ не отправлялся."
             siteWindowTestActive=false
             showInspectionDialog=true
         }
-        fun active(): Boolean {
+        fun valid():Boolean {
             if (!siteWindowTestActive||isFinishing||isDestroyed) return false
-            if (siteView.url!=originalUrl) {
+            if (siteView.url!=initialUrl) {
                 finish("Адрес страницы изменился. Проверка остановлена.")
                 return false
             }
             return true
         }
-        fun evalProbe(phase: String, next: (JSONObject?) -> Unit) {
-            if (!active()) return
-            val js=assets.open("deferred-window-probe.js").bufferedReader()
-                .use { it.readText() }.replace("__PROBE_PHASE__",phase)
-            siteView.evaluateJavascript(js) { raw ->
-                if (!active()) return@evaluateJavascript
-                val value=try {
+        fun readSnapshot(next:(JSONObject?)->Unit) {
+            if (!valid()) return
+            val code=assets.open("window-geometry-probe.js").bufferedReader()
+                .use { it.readText() }
+            siteView.evaluateJavascript(code) { raw ->
+                if (!valid()) return@evaluateJavascript
+                val result=try {
                     JSONObject(JSONTokener(raw).nextValue() as String)
-                } catch (_: Exception) { null }
-                next(value)
+                } catch (_:Exception) { null }
+                next(result)
             }
         }
-        // All fields come from a fixed, privacy-safe allowlist in the page probe.
-        fun layerInfo(data: JSONObject?): String {
-            if (data == null) return "Слои: нет ответа."
-            return "Слои: " + data.optString("hitStack","?") +
-                "\nВерхний элемент: " + data.optString("topKind","?") +
-                "; это затемнение: " + data.optBoolean("topIsOverlay") +
-                "\nДиалог под точкой кнопки: " +
-                data.optBoolean("dialogContainsPoint") +
-                "; элемент внутри диалога: " + data.optBoolean("topInsideDialog") +
-                "\nПорядок DOM изменён: " + data.optBoolean("afterOverlay") +
-                "\nz-index: окно " + data.optString("popupZ","?") +
-                ", затемнение " + data.optString("blockerZ","?") +
-                "\nПереход CSS: окно " + data.optBoolean("popupTransition") +
-                ", затемнение " + data.optBoolean("blockerTransition") +
-                "\nTransform: окно " + data.optBoolean("popupTransform") +
-                ", затемнение " + data.optBoolean("blockerTransform") +
-                "\nPointer-events: окно " + data.optString("popupPointer","?") +
-                ", затемнение " + data.optString("blockerPointer","?")
+        fun rectSummary(rect:JSONObject?):String {
+            if(rect==null)return "нет"
+            return "x="+rect.optInt("x")+", y="+rect.optInt("y")+
+                ", ширина="+rect.optInt("w")+", высота="+rect.optInt("h")
         }
-        fun rollback(report: String) {
-            evalProbe("rollback") { restored ->
-                finish(report+"\nОткат: "+(restored?.optString("status")?:"нет ответа")+".")
-            }
+        fun format(snapshot:JSONObject?):String {
+            if(snapshot==null)return "Нет ответа JavaScript."
+            if(snapshot.optString("status")!="ok")
+                return "Состояние: "+snapshot.optString("status","unknown")
+            val v=snapshot.optJSONObject("viewport")
+            val dialog=snapshot.optJSONObject("dialogStyle")
+            val blocker=snapshot.optJSONObject("blockerStyle")
+            val delta=snapshot.optJSONObject("buttonCenterDelta")
+            return "Состояние кнопки: "+snapshot.optString("confirmState")+
+                "\nКоординаты кнопки: "+rectSummary(snapshot.optJSONObject("buttonRect"))+
+                "\nКоординаты окна: "+rectSummary(snapshot.optJSONObject("dialogRect"))+
+                "\nКоординаты затемнения: "+rectSummary(snapshot.optJSONObject("blockerRect"))+
+                "\nКнопка внутри границ окна: "+snapshot.optBoolean("buttonWithinDialogRect")+
+                "\nКнопка внутри окна в DOM: "+snapshot.optBoolean("buttonInsideDialogDOM")+
+                "\nСмещение центров: x="+(delta?.optInt("x")?:0)+
+                ", y="+(delta?.optInt("y")?:0)+
+                "\nВ точке кнопки: "+snapshot.optString("buttonStack")+
+                "\nВ центре окна: "+snapshot.optString("dialogCenterStack")+
+                "\nz-index: окно "+(dialog?.optString("z")?:"?")+
+                ", затемнение "+(blocker?.optString("z")?:"?")+
+                "\nTransform окна: "+(dialog?.optBoolean("transform")?:false)+
+                "; переход CSS: "+(dialog?.optBoolean("transition")?:false)+
+                "\nОбласть сайта: "+(v?.optInt("innerW")?:0)+" x "+
+                (v?.optInt("innerH")?:0)+
+                "; visualViewport: "+(v?.optInt("visualW")?:0)+" x "+
+                (v?.optInt("visualH")?:0)+
+                "\nСмещение visualViewport: "+
+                (v?.optInt("offsetX")?:0)+", "+(v?.optInt("offsetY")?:0)+
+                "; масштаб: "+(v?.optDouble("scale")?:1.0)
         }
-        val inspector=assets.open("page-inspector.js").bufferedReader().use { it.readText() }
-        siteView.evaluateJavascript(inspector) baseline@{ raw ->
-            if (!active()) return@baseline
-            val before=try {
-                val r=JSONObject(JSONTokener(raw).nextValue() as String)
-                if (r.optString("status")=="ok" &&
-                    r.optString("pageStage")=="Подтверждение заказа" &&
-                    r.optInt("confirmButtons")==1 && r.optInt("dialogElements")>=1)
-                    r.optString("confirmState") else "unknown"
-            } catch (_: Exception) { "unknown" }
-            if (before!="covered") {
-                finish("До исправления: $before. Перестановка не выполнялась.")
-                return@baseline
-            }
-            evalProbe("start") started@{ start ->
-                val startStatus=start?.optString("status")?:"no_response"
-                if (startStatus!="reordered" || start?.optBoolean("afterOverlay")!=true) {
-                    if (startStatus=="reordered")
-                        rollback("Начальный порядок слоёв не подтверждён.")
-                    else finish("До исправления: covered.\nПерестановка: $startStatus.")
-                    return@started
+        readSnapshot first@{ a ->
+            if (!valid()) return@first
+            siteDiagnostics="Первый замер:\n"+format(a)+"\n\nВторой замер через 1 секунду…"
+            siteWindowTestHandler.postDelayed(second@{
+                if (!valid()) return@second
+                readSnapshot last@{ b ->
+                    if (!valid()) return@last
+                    finish("Первый замер:\n"+format(a)+
+                        "\n\nЧерез 1 секунду:\n"+format(b))
                 }
-                val immediate=start?.optString("immediate","unknown")?:"unknown"
-                siteDiagnostics="До изменения: covered.\nПерестановка DOM: выполнена."+
-                    "\nСразу после изменения: $immediate.\nЖду обновления WebView…"
-                siteWindowTestHandler.postDelayed(checkOne@{
-                    if (!active()) return@checkOne
-                    evalProbe("check") first@{ first ->
-                        val firstState=if (first?.optString("status")=="checked" &&
-                            first.optBoolean("afterOverlay"))
-                            first.optString("state") else "unknown"
-                        // Always take the second read before deciding whether to revert;
-                        // delayed CSS paints can take longer than 0.5 seconds.
-                        siteWindowTestHandler.postDelayed(checkTwo@{
-                            if (!active()) return@checkTwo
-                            evalProbe("check") second@{ last ->
-                                val lastState=if (last?.optString("status")=="checked" &&
-                                    last.optBoolean("afterOverlay"))
-                                    last.optString("state") else "unknown"
-                                val trace="До исправления: covered."+
-                                    "\nМетод: отложенная перестановка DOM."+
-                                    "\nСразу: $immediate."+
-                                    "\nЧерез 0,5 секунды: $firstState."+
-                                    "\nЧерез 2 секунды: $lastState."+
-                                    "\n\nЧерез 0,5 секунды:\n"+layerInfo(first)+
-                                    "\n\nЧерез 2 секунды:\n"+layerInfo(last)
-                                if (firstState!="visible" || lastState!="visible") {
-                                    rollback(trace+"\nИсправление не подтвердилось.")
-                                } else {
-                                    evalProbe("commit") committed@{ commit ->
-                                        if (commit?.optString("status")=="confirmed_visible")
-                                            finish(trace+"\nОкно остаётся доступным.")
-                                        else rollback(trace+"\nНе удалось подтвердить устойчивость.")
-                                    }
-                                }
-                            }
-                        },1500)
-                    }
-                },500)
-            }
+            },1000)
         }
     }
 
@@ -526,6 +488,14 @@ class MainActivity : ComponentActivity() {
                 confirmButton = {
                     TextButton(onClick = { showInspectionDialog = false },
                         enabled = !siteWindowTestActive) { Text("Закрыть") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        val manager = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        manager.setPrimaryClip(android.content.ClipData.newPlainText(
+                            "Диагностика окна", siteDiagnostics))
+                        Toast.makeText(this@MainActivity, "Отчёт скопирован", Toast.LENGTH_SHORT).show()
+                    }, enabled = !siteWindowTestActive) { Text("Копировать отчёт") }
                 }
             )
         }

@@ -136,23 +136,15 @@ for(let i=0;i<5;i++){
 console.log("Simulator scenarios, repeated WebView evaluations, origin isolation and offline checks passed");
 
 
-// Real-site diagnostic contract: staged visual verification, no order operation.
+// Contract: real-site diagnosis is read-only and never presses confirmation.
 const mainCode=fs.readFileSync("app/src/main/java/com/example/autoorders/MainActivity.kt","utf8");
 const startProbe=mainCode.indexOf("private fun testSiteWindow()");
 const endProbe=mainCode.indexOf("private var activeOrderId:",startProbe);
 assert.ok(startProbe>=0&&endProbe>startProbe);
 const probeCode=mainCode.slice(startProbe,endProbe);
-assert.match(probeCode,/page-inspector\.js/);
-assert.match(probeCode,/deferred-window-probe\.js/);
-assert.match(probeCode,/initialUrl|originalUrl/);
-assert.match(probeCode,/before!="covered"/);
-assert.match(probeCode,/firstState!="visible"/);
-assert.match(probeCode,/lastState!="visible"/);
-assert.match(probeCode,/confirmButtons/);
-assert.match(probeCode,/dialogElements/);
-assert.match(probeCode,/evalProbe\("rollback"\)/);
-assert.match(probeCode,/evalProbe\("commit"\)/);
-assert.doesNotMatch(probeCode,/siteRunner\.start|\.click\(|\.submit\(|submittedCode/);
+assert.match(probeCode,/window-geometry-probe\.js/);
+assert.match(probeCode,/readSnapshot first@/);
+assert.match(probeCode,/readSnapshot last@/);
+assert.doesNotMatch(probeCode,/siteRunner\.start|\.click\(|\.submit\(|insertBefore|deferred-window-probe/);
 assert.match(mainCode,/Тест окна без заказа/);
-assert.match(mainCode,/Тест окна/);
 assert.match(mainCode,/siteWindowTestHandler\.removeCallbacksAndMessages/);
