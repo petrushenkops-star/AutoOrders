@@ -30,6 +30,37 @@
     if (!e) return 'unknown';
     return e === button || button.contains(e) ? 'visible' : 'covered';
   };
+  // Return only bounded structural metadata. Do not expose text, IDs, URLs,
+  // code fields, amounts, class names, CSS selectors or account information.
+  const snapshot = ({popup,blocker,button}) => {
+    const r = button.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const top = document.elementFromPoint?.(x,y);
+    const stack = typeof document.elementsFromPoint === 'function' ?
+      document.elementsFromPoint(x,y).slice(0,5).map(kind).join(' > ') : 'unavailable';
+    const ps = getComputedStyle(popup), bs = getComputedStyle(blocker);
+    const safeZ = s => /^-?\d{1,9}$/.test(String(s.zIndex)) ? String(s.zIndex) : 'auto';
+    const safePosition = s => ['fixed','absolute','sticky','relative','static']
+      .includes(s.position) ? s.position : 'unknown';
+    const safePointer = s => s.pointerEvents === 'none' ? 'none' :
+      s.pointerEvents === 'auto' ? 'auto' : 'other';
+    const hasTransition = s => String(s.transitionDuration||'0s')
+      .split(',').some(v => parseFloat(v)>0);
+    const rect = popup.getBoundingClientRect();
+    return {
+      topKind:kind(top),topIsOverlay:top===blocker,topInsideDialog:
+        top===popup || !!popup.contains(top),hitStack:stack,
+      popupZ:safeZ(ps),blockerZ:safeZ(bs),
+      popupPosition:safePosition(ps),blockerPosition:safePosition(bs),
+      popupTransform:!!ps.transform && ps.transform!=='none',
+      blockerTransform:!!bs.transform && bs.transform!=='none',
+      popupTransition:hasTransition(ps),blockerTransition:hasTransition(bs),
+      popupPointer:safePointer(ps),blockerPointer:safePointer(bs),
+      dialogContainsPoint:rect.top<=y && rect.bottom>=y &&
+        rect.left<=x && rect.right>=x,
+      afterOverlay:blocker.nextSibling===popup
+    };
+  };
   const restore = probe => {
     const {parent,popup,originalNext} = probe;
     if (!parent || popup.parentElement !== parent) return false;
@@ -70,9 +101,7 @@
       try { parent.insertBefore(popup,blocker.nextSibling); }
       catch (_){delete window[slot];return result('move_failed');}
       return result('reordered', {
-        afterOverlay:blocker.nextSibling===popup,
-        immediate:hit(button), immediateTop:kind(document.elementFromPoint?.(
-          r.left+r.width/2,r.top+r.height/2))
+        immediate:hit(button), ...snapshot(probe)
       });
     }
     const probe=window[slot];
@@ -84,7 +113,7 @@
       return result('page_changed');
     }
     const state=hit(probe.button);
-    const details={state,afterOverlay:probe.blocker.nextSibling===probe.popup};
+    const details={state,...snapshot(probe)};
     if (mode==='check') return result('checked',details);
     if (mode==='rollback') {
       const restored=restore(probe);

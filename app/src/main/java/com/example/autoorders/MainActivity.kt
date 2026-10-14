@@ -370,6 +370,25 @@ class MainActivity : ComponentActivity() {
                 next(value)
             }
         }
+        // All fields come from a fixed, privacy-safe allowlist in the page probe.
+        fun layerInfo(data: JSONObject?): String {
+            if (data == null) return "Слои: нет ответа."
+            return "Слои: " + data.optString("hitStack","?") +
+                "\nВерхний элемент: " + data.optString("topKind","?") +
+                "; это затемнение: " + data.optBoolean("topIsOverlay") +
+                "\nДиалог под точкой кнопки: " +
+                data.optBoolean("dialogContainsPoint") +
+                "; элемент внутри диалога: " + data.optBoolean("topInsideDialog") +
+                "\nПорядок DOM изменён: " + data.optBoolean("afterOverlay") +
+                "\nz-index: окно " + data.optString("popupZ","?") +
+                ", затемнение " + data.optString("blockerZ","?") +
+                "\nПереход CSS: окно " + data.optBoolean("popupTransition") +
+                ", затемнение " + data.optBoolean("blockerTransition") +
+                "\nTransform: окно " + data.optBoolean("popupTransform") +
+                ", затемнение " + data.optBoolean("blockerTransform") +
+                "\nPointer-events: окно " + data.optString("popupPointer","?") +
+                ", затемнение " + data.optString("blockerPointer","?")
+        }
         fun rollback(report: String) {
             evalProbe("rollback") { restored ->
                 finish(report+"\nОткат: "+(restored?.optString("status")?:"нет ответа")+".")
@@ -402,38 +421,36 @@ class MainActivity : ComponentActivity() {
                     "\nСразу после изменения: $immediate.\nЖду обновления WebView…"
                 siteWindowTestHandler.postDelayed(checkOne@{
                     if (!active()) return@checkOne
-                    evalProbe("check") first@{ r ->
-                        val state=if (r?.optString("status")=="checked" &&
-                            r?.optBoolean("afterOverlay")==true) r.optString("state") else "unknown"
-                        if (state!="visible") {
-                            rollback("Сразу: $immediate.\nЧерез 0,5 секунды: $state."+
-                                "\nИсправление не подтвердилось.")
-                        } else {
-                            siteWindowTestHandler.postDelayed(checkTwo@{
-                                if (!active()) return@checkTwo
-                                evalProbe("check") second@{ last ->
-                                    val finalState=if (last?.optString("status")=="checked" &&
-                                        last?.optBoolean("afterOverlay")==true)
-                                        last.optString("state") else "unknown"
-                                    if (finalState!="visible") {
-                                        rollback("Сразу: $immediate.\nЧерез 0,5 секунды: visible."+
-                                            "\nЧерез 2 секунды: $finalState."+
-                                            "\nИзменение отменено.")
-                                    } else {
-                                        evalProbe("commit") committed@{ commit ->
-                                            if (commit?.optString("status")=="confirmed_visible")
-                                                finish("До исправления: covered."+
-                                                    "\nМетод: отложенная перестановка DOM."+
-                                                    "\nСразу: $immediate."+
-                                                    "\nЧерез 0,5 секунды: visible."+
-                                                    "\nЧерез 2 секунды: visible."+
-                                                    "\nОкно остаётся доступным.")
-                                            else rollback("Не удалось подтвердить устойчивость.")
-                                        }
+                    evalProbe("check") first@{ first ->
+                        val firstState=if (first?.optString("status")=="checked" &&
+                            first.optBoolean("afterOverlay"))
+                            first.optString("state") else "unknown"
+                        // Always take the second read before deciding whether to revert;
+                        // delayed CSS paints can take longer than 0.5 seconds.
+                        siteWindowTestHandler.postDelayed(checkTwo@{
+                            if (!active()) return@checkTwo
+                            evalProbe("check") second@{ last ->
+                                val lastState=if (last?.optString("status")=="checked" &&
+                                    last.optBoolean("afterOverlay"))
+                                    last.optString("state") else "unknown"
+                                val trace="До исправления: covered."+
+                                    "\nМетод: отложенная перестановка DOM."+
+                                    "\nСразу: $immediate."+
+                                    "\nЧерез 0,5 секунды: $firstState."+
+                                    "\nЧерез 2 секунды: $lastState."+
+                                    "\n\nЧерез 0,5 секунды:\n"+layerInfo(first)+
+                                    "\n\nЧерез 2 секунды:\n"+layerInfo(last)
+                                if (firstState!="visible" || lastState!="visible") {
+                                    rollback(trace+"\nИсправление не подтвердилось.")
+                                } else {
+                                    evalProbe("commit") committed@{ commit ->
+                                        if (commit?.optString("status")=="confirmed_visible")
+                                            finish(trace+"\nОкно остаётся доступным.")
+                                        else rollback(trace+"\nНе удалось подтвердить устойчивость.")
                                     }
                                 }
-                            },1500)
-                        }
+                            }
+                        },1500)
                     }
                 },500)
             }

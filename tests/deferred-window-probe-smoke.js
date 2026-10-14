@@ -21,11 +21,13 @@ function scenario(host='lxcompintb.com'){
    click(){clicks++}};
  const body={};
  const document={body,querySelectorAll:()=>[button],
-   elementFromPoint:()=>painted?button:overlay};
+   elementFromPoint:()=>painted?button:overlay,
+   elementsFromPoint:()=>painted?[button,popup,overlay,body]:[overlay,popup,body]};
  const window={innerWidth:390,innerHeight:703};
  const location={protocol:'https:',hostname:host,href:'https://'+host+'/ru'};
  const getComputedStyle=e=>({
-   display:'block',visibility:'visible',position:'fixed',zIndex:'2003'
+   display:'block',visibility:'visible',position:'fixed',zIndex:'2003',
+   pointerEvents:'auto',transform:'none',transitionDuration:'0s'
  });
  const context={location,document,window,getComputedStyle};
  vm.createContext(context);
@@ -35,11 +37,22 @@ function scenario(host='lxcompintb.com'){
 const success=scenario();
 assert.equal(success.run('start').status,'reordered');
 assert.equal(success.counts().moves,1);
+const hidden=success.run('check');
+assert.equal(hidden.topKind,'overlay');
+assert.equal(hidden.topIsOverlay,true);
+assert.equal(hidden.dialogContainsPoint,true);
+assert.equal(hidden.popupZ,'2003');
+assert.equal(hidden.blockerZ,'2003');
+assert.equal(hidden.hitStack,'overlay > dialog > other');
+assert.equal(hidden.afterOverlay,true);
 assert.equal(success.run('check').state,'covered');
 success.setPaint(true);
 const checked=success.run('check');
 assert.equal(checked.status,'checked');assert.equal(checked.afterOverlay,true);
 assert.equal(checked.state,'visible');
+assert.equal(checked.topKind,'button');
+assert.equal(checked.topIsOverlay,false);
+assert.equal(checked.topInsideDialog,true);
 assert.equal(success.run('commit').status,'confirmed_visible');
 assert.equal(success.run('check').status,'no_active_probe');
 assert.deepEqual(success.counts(),{clicks:0,moves:1,restores:0});
@@ -60,5 +73,8 @@ assert.match(test,/evalProbe\("rollback"\)/);
 assert.match(test,/evalProbe\("commit"\)/);
 assert.match(test,/postDelayed\(checkOne@/);
 assert.match(test,/postDelayed\(checkTwo@/);
+assert.match(test,/fun layerInfo\(data: JSONObject\?\)/);
+assert.match(test,/Через 0,5 секунды/);
+assert.match(test,/Через 2 секунды/);
 assert.doesNotMatch(test,/siteRunner\.start|\.click\(|\.submit\(/);
 console.log('Deferred live overlay probe: staged checks and rollback passed');
