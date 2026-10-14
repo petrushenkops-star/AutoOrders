@@ -11,7 +11,7 @@ function scenario(host='lxcompintb.com'){
  }};
  const popup={parentElement:parent,nextSibling:null, className:'van-dialog',
    getClientRects:()=>[1],contains:e=>e===button,
-   getAttribute:n=>n==='role'?'dialog':'',getBoundingClientRect:()=>({top:480,left:20,width:260,height:180})};
+   getAttribute:n=>n==='role'?'dialog':'',getBoundingClientRect:()=>({top:480,left:20,right:280,bottom:660,width:260,height:180})};
  const overlay={parentElement:parent,nextSibling:null,className:'van-overlay',
    getClientRects:()=>[1],contains:()=>false};
  popup.nextSibling=overlay;
