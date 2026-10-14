@@ -81,6 +81,8 @@ const fallback=scenario({dialogRaiseWorks:false});
 assert.equal(fallback.result.status,'overlay_fixed');
 assert.equal(fallback.dialogZ,2005);
 assert.equal(fallback.overlayZ,2004);
+// The complicated simulator mode exercises this same fallback: raising the
+// dialog AND lowering the overlay are ineffective during the CSS transition.
 const reordered=scenario({dialogRaiseWorks:false,overlayLowerWorks:false});
 assert.equal(reordered.result.status,'dom_reordered');
 assert.equal(reordered.reordered,true);

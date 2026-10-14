@@ -105,6 +105,13 @@ class SimulatorActivity : ComponentActivity() {
                             Text((if (covering == "blocked") "✓ " else "") + "Перекрыто")
                         }
                     }
+                    OutlinedButton(
+                        enabled = loaded && !running,
+                        onClick = { covering = "stubborn"; resetPage() }
+                    ) {
+                        Text((if (covering == "stubborn") "✓ " else "") +
+                            "Сложное перекрытие (тест DOM)")
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Button(enabled = loaded && !running, onClick = {
                             running = true
@@ -203,7 +210,21 @@ class SimulatorActivity : ComponentActivity() {
             } else if (data.optString("status") == "not_found") {
                 message = "Сначала нажми «Открыть тестовое окно», чтобы появилась кнопка «Подтв.»."
             } else {
-                message = "Результат исправления: ${data.optString("status", "не определён")}."
+                val status = data.optString("status", "не определён")
+                message = when (status) {
+                    "dom_reordered", "shifted_and_dom_reordered" ->
+                        "Резервное исправление: окно перемещено после затемнения. " +
+                            "Сейчас проверю, осталась ли кнопка доступной."
+                    "dialog_raised", "shifted_and_dialog_raised" ->
+                        "Основное исправление: изменён z-index окна. " +
+                            "Сейчас проверю доступность кнопки."
+                    "overlay_fixed", "shifted_and_overlay_fixed" ->
+                        "Исправление: понижен z-index затемнения. " +
+                            "Сейчас проверю доступность кнопки."
+                    "overlay_still_blocked" ->
+                        "Исправление не помогло: изменения отменены. Кнопка пока перекрыта."
+                    else -> "Результат исправления: $status. Кнопку проверю повторно."
+                }
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     if (!isFinishing && !isDestroyed) inspectPage()
                 }, 1000)

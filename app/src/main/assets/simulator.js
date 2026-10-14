@@ -14,11 +14,15 @@ function render(){
    root.innerHTML='<h3>Доставка и копирование</h3><p>Сумма заказа</p><h2>25.00 TEST</h2>'+
      button("copy","Быстрое копирование");
    if(stage==="confirm"){
-     const mask='<div class="van-overlay" style="z-index:'+oz+'"></div>';
-     const dialog='<section role="dialog" class="van-dialog" style="z-index:'+pz+'">'+
+     // Stubborn mode uses a delayed z-index transition. Both siblings start
+     // on the same z-index, but changing inline z-index does not immediately
+     // change hit-testing. DOM ordering is the expected fallback.
+     const stubborn=cover==="stubborn"?' stubborn-layer':'';
+     const mask='<div class="van-overlay'+stubborn+'" style="z-index:'+oz+'"></div>';
+     const dialog='<section role="dialog" class="van-dialog'+stubborn+'" style="z-index:'+pz+'">'+
        '<p>Вы уверены, что хотите скопировать тестовый заказ?</p>'+
        button("cancel","Отмена")+button("confirm","Подтв.")+'</section>';
-     root.insertAdjacentHTML("beforeend",cover==="blocked"?dialog+mask:mask+dialog);
+     root.insertAdjacentHTML("beforeend",cover==="normal"?mask+dialog:dialog+mask);
    }
  }
  if(stage==="success")root.innerHTML='<h3 class="success">Заказ выполнен успешно!</h3>'+
@@ -42,7 +46,8 @@ function render(){
 }
 window.autoordersSimulator=Object.freeze({
  reset(nextOutcome,nextCover,popupZ=2004,overlayZ=2004){
-  if(!["success","error","hang"].includes(nextOutcome)||!["normal","blocked"].includes(nextCover))return false;
+  if(!["success","error","hang"].includes(nextOutcome)||
+     !["normal","blocked","stubborn"].includes(nextCover))return false;
   outcome=nextOutcome;cover=nextCover;
   pz=Number.isInteger(popupZ)&&popupZ>0&&popupZ<=100000?popupZ:2004;
   oz=Number.isInteger(overlayZ)&&overlayZ>0&&overlayZ<=100000?overlayZ:2004;

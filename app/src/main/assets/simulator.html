@@ -9,6 +9,12 @@ main{background:white;border-radius:16px;padding:18px;margin-top:12px;min-height
 button{background:#573da5;color:white;border:0;border-radius:12px;padding:12px;font:inherit}
 input{padding:12px;border:1px solid #888;border-radius:10px;width:100%;font:inherit;margin:12px 0}
 .van-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65)}
+/* A WebView-native stress case: CSS transitions keep equal-z sibling painting
+   after immediate z-index writes, so DOM order can be exercised as fallback.
+   This approximates a troublesome page re-render; it is NOT a real-site clone. */
+.van-overlay.stubborn-layer,.van-dialog.stubborn-layer{
+ transition: z-index 90s steps(1,end);
+}
 .van-dialog{position:fixed;top:48%;left:50%;width:86%;max-width:400px;transform:translate(-50%,-50%);
  background:white;border-radius:18px;padding:22px 12px;text-align:center;box-shadow:0 6px 24px #2224}
 .van-dialog button{margin:7px}.success{color:green}.error{color:darkred}

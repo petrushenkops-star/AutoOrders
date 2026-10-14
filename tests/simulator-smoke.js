@@ -28,6 +28,20 @@ assert.equal(sim.reset("hang","normal"),true);
 click("open");click("send");click("copy");click("confirm");
 assert.equal(sim.state(),"hang");
 assert.equal(sim.reset("unexpected","normal"),false);
+assert.match(page,/transition:\s*z-index 90s steps\(1,end\)/);
+assert.equal(sim.reset("success","stubborn"),true);
+assert.equal(sim.showConfirmation(),true);
+assert.equal(sim.state(),"confirm");
+assert.ok(html.includes("van-dialog stubborn-layer"));
+assert.ok(html.includes("van-overlay stubborn-layer"));
+assert.ok(html.indexOf("van-dialog stubborn-layer") < html.indexOf("van-overlay stubborn-layer"));
+assert.equal(sim.reset("success","invalid"),false);
+// Demonstrates repeatability and explicitly selects the stress case each time.
+for (let i=0;i<3;i++){
+ assert.equal(sim.reset("success","stubborn"),true);
+ assert.equal(sim.showConfirmation(),true);
+ assert.equal(sim.state(),"confirm");
+}
 // Directly open the confirmation even after reset, preserving the blocked mode.
 assert.equal(sim.reset("success","blocked"),true);
 assert.equal(sim.state(),"menu");
@@ -63,6 +77,8 @@ assert.match(kotlin,/simulation = true/);
 assert.match(kotlin,/window\.autoordersSimulator\.showConfirmation\(\)/);
 assert.match(kotlin,/Открыть тестовое окно/);
 assert.match(kotlin,/Исправить перекрытие/);
+assert.match(kotlin,/Сложное перекрытие/);
+assert.match(kotlin,/Резервное исправление/);
 assert.ok(kotlin.includes("const __SIMULATOR__ = true; return ("));
 const siteRunner=fs.readFileSync("app/src/main/java/com/example/autoorders/SiteRunner.kt","utf8");
 assert.ok(siteRunner.includes("const __SIMULATOR__ = true; return ("));
