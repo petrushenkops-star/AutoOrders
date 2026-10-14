@@ -391,20 +391,20 @@ class MainActivity : ComponentActivity() {
             }
             evalProbe("start") started@{ start ->
                 val startStatus=start?.optString("status")?:"no_response"
-                if (startStatus!="reordered" || !start.optBoolean("afterOverlay")) {
+                if (startStatus!="reordered" || start?.optBoolean("afterOverlay")!=true) {
                     if (startStatus=="reordered")
                         rollback("Начальный порядок слоёв не подтверждён.")
                     else finish("До исправления: covered.\nПерестановка: $startStatus.")
                     return@started
                 }
-                val immediate=start.optString("immediate","unknown")
+                val immediate=start?.optString("immediate","unknown")?:"unknown"
                 siteDiagnostics="До изменения: covered.\nПерестановка DOM: выполнена."+
                     "\nСразу после изменения: $immediate.\nЖду обновления WebView…"
                 siteWindowTestHandler.postDelayed(checkOne@{
                     if (!active()) return@checkOne
                     evalProbe("check") first@{ r ->
                         val state=if (r?.optString("status")=="checked" &&
-                            r.optBoolean("afterOverlay")) r.optString("state") else "unknown"
+                            r?.optBoolean("afterOverlay")==true) r.optString("state") else "unknown"
                         if (state!="visible") {
                             rollback("Сразу: $immediate.\nЧерез 0,5 секунды: $state."+
                                 "\nИсправление не подтвердилось.")
@@ -413,7 +413,7 @@ class MainActivity : ComponentActivity() {
                                 if (!active()) return@checkTwo
                                 evalProbe("check") second@{ last ->
                                     val finalState=if (last?.optString("status")=="checked" &&
-                                        last.optBoolean("afterOverlay"))
+                                        last?.optBoolean("afterOverlay")==true)
                                         last.optString("state") else "unknown"
                                     if (finalState!="visible") {
                                         rollback("Сразу: $immediate.\nЧерез 0,5 секунды: visible."+
