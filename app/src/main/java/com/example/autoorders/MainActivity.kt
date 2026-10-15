@@ -637,30 +637,38 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
             ) {
                 Surface(tonalElevation = 3.dp) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        TextButton(onClick = { fullScreenSite = false }) {
-                            Text("← Назад")
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            TextButton(onClick = { fullScreenSite = false }) {
+                                Text("← Назад")
+                            }
+                            TextButton(
+                                onClick = { testSiteWindow() },
+                                enabled = !runnerActive && !siteWindowTestActive
+                            ) { Text("Тест окна") }
+                            TextButton(
+                                onClick = { inspectSite() },
+                                enabled = !runnerActive && !siteWindowTestActive
+                            ) { Text("Проверить") }
                         }
-                        TextButton(
-                            onClick = { testSiteWindow() },
-                            enabled = !runnerActive && !siteWindowTestActive
-                        ) { Text("Тест окна") }
-                        TextButton(
-                            onClick = { trialFixDialogHeight() },
-                            enabled = !runnerActive && !siteWindowTestActive
-                        ) { Text("Пробное исправление") }
-                        TextButton(
-                            onClick = { trialFixDialogHeight(longCheck = true) },
-                            enabled = !runnerActive && !siteWindowTestActive
-                        ) { Text("Тест 10 секунд") }
-                        TextButton(
-                            onClick = { inspectSite() },
-                            enabled = !runnerActive && !siteWindowTestActive
-                        ) { Text("Проверить") }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            TextButton(
+                                onClick = { trialFixDialogHeight() },
+                                enabled = !runnerActive && !siteWindowTestActive
+                            ) { Text("Пробное исправление") }
+                            TextButton(
+                                onClick = { trialFixDialogHeight(longCheck = true) },
+                                enabled = !runnerActive && !siteWindowTestActive
+                            ) { Text("Тест 10 секунд") }
+                        }
                     }
                 }
                 AndroidView(
