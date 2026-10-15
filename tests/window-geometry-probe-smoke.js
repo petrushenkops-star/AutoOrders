@@ -3,18 +3,21 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const code=fs.readFileSync('app/src/main/assets/window-geometry-probe.js','utf8');
 function mock(host='lxcompintb.com'){
  let clicked=0,mutations=0;
- const body={tagName:'BODY'};
+ const body={tagName:'BODY',children:[],offsetHeight:703,clientHeight:703,scrollHeight:703,
+   getBoundingClientRect:()=>({left:0,top:0,right:390,bottom:703,width:390,height:703})};
  const dialog={className:'van-dialog',parentElement:body,getAttribute:()=>null,
-   getClientRects:()=>[1],contains:e=>e===button,
-   getBoundingClientRect:()=>({left:80,top:100,right:300,bottom:320,width:220,height:220})};
+   getClientRects:()=>[1],contains:e=>e===button,children:[],
+   offsetHeight:0,clientHeight:0,scrollHeight:0,
+   getBoundingClientRect:()=>({left:80,top:100,right:300,bottom:100,width:220,height:0})};
  const overlay={className:'van-overlay',tagName:'DIV',getAttribute:()=>null,
    getBoundingClientRect:()=>({left:0,top:0,right:390,bottom:700,width:390,height:700})};
- const button={tagName:'BUTTON',innerText:'Подтв.',disabled:false,
+ const button={tagName:'BUTTON',innerText:'Подтв.',disabled:false,offsetParent:dialog,
    getAttribute:()=>null,getClientRects:()=>[1],closest:()=>dialog,
    contains:e=>e===button,
    getBoundingClientRect:()=>({left:130,top:550,right:230,bottom:585,width:100,height:35}),
    click(){clicked++}};
- const getComputedStyle=e=>({visibility:'visible',display:'block',
+ const getComputedStyle=e=>({visibility:'visible',display:'block',height:e===dialog?'0px':'703px',
+   minHeight:'0px',maxHeight:'none',overflowY:'visible',
    zIndex:'2003',position:e===button?'relative':'fixed',transform:e===dialog?'translate(-50%,-50%)':'none',
    transitionDuration:e===dialog?'0.3s':'0s',pointerEvents:'auto'});
  const document={body,querySelectorAll:()=>[button],
@@ -35,6 +38,11 @@ for(let i=0;i<4;i++){
  assert.equal(r.buttonInsideDialogDOM,true);
  assert.equal(r.buttonRect.y,550);
  assert.equal(r.dialogRect.y,100);
+ assert.equal(r.dialogRect.h,0);
+ assert.equal(r.ancestorBoxes[0].height,'0px');
+ assert.equal(r.ancestorBoxes[0].offsetHeight,0);
+ assert.equal(r.ancestorBoxes[1].kind,'page');
+ assert.equal(r.offsetBox.height,'0px');
  assert.equal(r.buttonStack,'overlay > page');
  assert.equal(r.dialogCenterStack,'overlay > page');
  assert.equal(r.dialogStyle.transform,true);
