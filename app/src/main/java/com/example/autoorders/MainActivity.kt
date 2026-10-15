@@ -448,7 +448,12 @@ class MainActivity : ComponentActivity() {
      * Only a reversible visual trial. The native modal blocks interaction with
      * the WebView. No confirmation click, code entry or order submission.
      */
-    private fun trialFixDialogHeight() {
+    /**
+     * Temporary native-modal visual test. The WebView is not touchable while
+     * the modal is open; no code submission, clicks or order actions.
+     * longCheck=true checks for ten seconds to catch spontaneous DOM re-renders.
+     */
+    private fun trialFixDialogHeight(longCheck: Boolean = false) {
         if (runnerActive || siteWindowTestActive) return
         val originalUrl=siteView.url.orEmpty()
         val uri=Uri.parse(originalUrl)
@@ -461,12 +466,18 @@ class MainActivity : ComponentActivity() {
         }
         siteWindowTestActive=true
         showInspectionDialog=true
-        siteDiagnostics="Проверяю высоту диалога. Изменения будут отменены через 2 секунды."
+        siteDiagnostics=if (longCheck)
+            "Проверяю устойчивость исправления в течение 10 секунд. Заказ не отправляется."
+        else "Проверяю высоту диалога. Изменения будут отменены через 2 секунды."
+        val times=if (longCheck) listOf(500L,2000L,5000L,10000L)
+            else listOf(500L,2000L)
+        val trace=mutableListOf<String>()
 
         fun finish(report:String) {
             if (!siteWindowTestActive||isFinishing||isDestroyed) return
             siteDiagnostics=report+"\n\nТест не нажимает «Подтв.» и не отправляет заказ."
             siteWindowTestActive=false
+            siteWindowTestHandler.removeCallbacksAndMessages(null)
         }
         fun execute(phase:String,callback:(JSONObject?)->Unit) {
             if (!siteWindowTestActive||isFinishing||isDestroyed) return
@@ -481,6 +492,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         fun rollback(report:String) {
+            // Always revert both dimensions and stacking after a check.
             execute("restore") { response ->
                 val status=response?.optString("status")?:"no_response"
                 finish(report+"\nВосстановление исходных стилей: $status.")
@@ -494,32 +506,49 @@ class MainActivity : ComponentActivity() {
             }
             val height=data?.optInt("targetHeight") ?: 0
             val immediate=data?.optString("state","unknown") ?: "unknown"
-            siteDiagnostics="Высота временно установлена: $height px."+
-                "\nСразу после изменения: $immediate."+
-                "\nПроверяю видимость без нажатий…"
-            siteWindowTestHandler.postDelayed(first@{
-                if (!siteWindowTestActive) return@first
-                execute("check") firstResult@{ firstData ->
-                    val first=if(firstData?.optString("status")=="checked")
-                        firstData.optString("state","unknown") else "unknown"
-                    siteWindowTestHandler.postDelayed(second@{
-                        if (!siteWindowTestActive) return@second
-                        execute("check") secondResult@{ lastData ->
-                            val second=if(lastData?.optString("status")=="checked")
-                                lastData.optString("state","unknown") else "unknown"
-                            val report="До изменения: covered."+
-                                "\nПробная высота: $height px."+
-                                "\nСразу: $immediate."+
-                                "\nЧерез 0,5 секунды: $first."+
-                                "\nЧерез 2 секунды: $second."+
-                                if (first=="visible" && second=="visible")
-                                    "\nДоступность кнопки временно подтверждена."
-                                else "\nПробное исправление не подтвердилось."
-                            rollback(report)
-                        }
-                    },1500)
-                }
-            },500)
+            val header="До изменения: covered.\nПробная высота: $height px."+
+                "\nСразу: $immediate."
+            trace.add("Сразу: $immediate")
+            if (immediate!="visible") {
+                rollback(header+"\nИзменение не сделало кнопку доступной.")
+                return@start
+            }
+            // Watchdog: a stalled callback must not leave the visual patch in place.
+            siteWindowTestHandler.postDelayed({
+                if (siteWindowTestActive) rollback(
+                    header+"\nПроверка прервана по тайм-ауту. Исходные стили восстанавливаются.")
+            }, if (longCheck) 13000L else 5000L)
+            fun sample(index:Int) {
+                if (!siteWindowTestActive) return
+                val previous=if (index==0) 0L else times[index-1]
+                siteWindowTestHandler.postDelayed({
+                    if (!siteWindowTestActive) return@postDelayed
+                    if (siteView.url != originalUrl) {
+                        rollback(header+"\nАдрес страницы изменился. Проверка остановлена.")
+                        return@postDelayed
+                    }
+                    execute("check") { response ->
+                        val status=response?.optString("status")?:"no_response"
+                        val state=if (status=="checked")
+                            response?.optString("state","unknown")?:"unknown"
+                        else status
+                        val label=if (times[index]<1000L)
+                            "Через 0,5 секунды"
+                        else "Через "+(times[index]/1000L)+" секунд"
+                        trace.add("$label: $state")
+                        siteDiagnostics=header+"\n"+trace.drop(1).joinToString("\n")+
+                            "\nИзменения ещё временные. Жду следующей проверки…"
+                        if (state!="visible") {
+                            rollback(header+"\n"+trace.drop(1).joinToString("\n")+
+                                "\nКнопка перестала быть доступной; проверка остановлена.")
+                        } else if (index==times.lastIndex) {
+                            rollback(header+"\n"+trace.drop(1).joinToString("\n")+
+                                "\nДоступность кнопки подтверждена на всём интервале.")
+                        } else sample(index+1)
+                    }
+                }, times[index]-previous)
+            }
+            sample(0)
         }
     }
 
@@ -624,6 +653,10 @@ class MainActivity : ComponentActivity() {
                             onClick = { trialFixDialogHeight() },
                             enabled = !runnerActive && !siteWindowTestActive
                         ) { Text("Пробное исправление") }
+                        TextButton(
+                            onClick = { trialFixDialogHeight(longCheck = true) },
+                            enabled = !runnerActive && !siteWindowTestActive
+                        ) { Text("Тест 10 секунд") }
                         TextButton(
                             onClick = { inspectSite() },
                             enabled = !runnerActive && !siteWindowTestActive
@@ -835,6 +868,10 @@ class MainActivity : ComponentActivity() {
                         OutlinedButton(onClick = { trialFixDialogHeight() },
                             enabled = !runnerActive && !siteWindowTestActive) {
                             Text("Пробное исправление окна")
+                        }
+                        OutlinedButton(onClick = { trialFixDialogHeight(longCheck = true) },
+                            enabled = !runnerActive && !siteWindowTestActive) {
+                            Text("Проверка устойчивости (10 секунд)")
                         }
                         Text(siteDiagnostics, style = MaterialTheme.typography.bodySmall)
                         OutlinedButton(
