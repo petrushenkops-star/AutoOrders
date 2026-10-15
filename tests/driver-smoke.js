@@ -7,7 +7,7 @@ function test(stage, code, bodyText, buttonNames, inputNeeded, expected, clicked
   const buttons = buttonNames.map(name => ({
     innerText: name, disabled: false, getClientRects() { return [1] }, click() { clicks.push(name) }, getAttribute() { return '' },
     getBoundingClientRect() {return {left:40,top:200,width:120,height:40}},
-    closest() {return {getClientRects(){return [1]}}},
+    closest() {return {getClientRects(){return [1]}, contains:e=>e===this}},
     contains(e){return e===this},
   }));
   const input = {placeholder: 'Пожалуйста, введите динамический пароль', parentElement: {innerText: 'Динамический пароль'},
@@ -33,9 +33,11 @@ function test(stage, code, bodyText, buttonNames, inputNeeded, expected, clicked
 test('OPEN_COPY', '123', 'Меню Быстрое копирование', ['Быстрое копирование'], false, 'advance', ['Быстрое копирование']);
 test('ENTER_CODE', '123', 'Динамический пароль', ['Отправлять'], true, 'advance', ['Отправлять']);
 test('WAIT_DETAILS', '', 'Сумма заказа 30.9 Быстрое копирование', ['Быстрое копирование'], false, 'advance', ['Быстрое копирование']);
-test('WAIT_CONFIRM', '', 'Следовать Вы уверены, что хотите скопировать 30.9 USDT?', ['Подтв.'], false, 'advance', ['Подтв.']);
+test('WAIT_CONFIRM', '', 'Следовать Вы уверены, что хотите скопировать 30.9 USDT?', ['Подтв.'], false, 'advance', []);
+test('WAIT_CONFIRM_SEND', '', 'Следовать Вы уверены, что хотите скопировать 30.9 USDT?', ['Подтв.'], false, 'advance', ['Подтв.']);
 test('WAIT_RESULT', '', 'Быстрый Заказ выполнен успешно!', ['Подтв.'], false, 'success', ['Подтв.']);
 test('WAIT_CONFIRM', '', 'Техническая ошибка', ['Подтв.'], false, 'wait', []);
-test('WAIT_CONFIRM', '', 'Вы уверены, что хотите скопировать?', ['Подтв.'], false, 'error', [], true);
+test('WAIT_CONFIRM', '', 'Вы уверены, что хотите скопировать?', ['Подтв.'], false, 'repair_needed', [], true);
+test('WAIT_CONFIRM_SEND', '', 'Вы уверены, что хотите скопировать?', ['Подтв.'], false, 'error', [], true);
 test('OPEN_COPY', '123', 'Меню', [], false, 'wait', []);
-console.log('DOM adapter: 8 smoke tests passed, including blocked financial confirmation');
+console.log('DOM adapter: 10 smoke tests passed, including guarded confirmation and repair request');
