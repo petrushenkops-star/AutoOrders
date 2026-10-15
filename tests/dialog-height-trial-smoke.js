@@ -33,6 +33,7 @@ function fixture({host='lxcompintb.com',allowVisible=true,height=0}={}){
  vm.createContext(ctx);
  return {
    run:phase=>JSON.parse(vm.runInContext(source.replace('__PHASE__',phase),ctx)),
+   disconnect:()=>{dialog.isConnected=false},
    style,counts:()=>({clicks,submits,requests}),mutations:()=>props.size
  };
 }
@@ -57,6 +58,12 @@ const unsuitable=fixture({height:260});
 assert.equal(unsuitable.run('start').status,'unsafe_layout');
 assert.equal(unsuitable.mutations(),0);
 assert.equal(fixture({host:'example.org'}).run('start').status,'invalid_page');
+const rerender=fixture();
+assert.equal(rerender.run('start').status,'started');
+rerender.disconnect();
+assert.equal(rerender.run('check').status,'page_changed');
+assert.equal(rerender.run('restore').status,'restored');
+assert.equal(rerender.mutations(),0);
 const main=fs.readFileSync('app/src/main/java/com/example/autoorders/MainActivity.kt','utf8');
 const first=main.indexOf('private fun trialFixDialogHeight()');
 const last=main.indexOf('private var activeOrderId:',first);
@@ -68,4 +75,9 @@ assert.match(method,/execute\("check"\)/);
 assert.match(method,/execute\("restore"\)/);
 assert.doesNotMatch(method,/siteRunner\.start|\.click\(|\.submit\(|loadUrl\(/);
 assert.match(main,/Пробное исправление окна/);
+assert.match(main,/Проверка устойчивости \(10 секунд\)/);
+assert.match(method,/listOf\(500L,2000L,5000L,10000L\)/);
+assert.match(method,/sample\(index\+1\)/);
+assert.match(method,/rollback\(report\)/);
+assert.match(method,/siteView\.url != originalUrl/);
 console.log('Reversible dialog-height trial tests passed');
