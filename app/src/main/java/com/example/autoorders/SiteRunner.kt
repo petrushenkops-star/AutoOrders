@@ -20,13 +20,21 @@ class SiteRunner(
     private var ticks = 0
     private var confirmationMayHaveBeenSent = false
     private var script: String? = null
+    private var allowVisualFix = false
+    private var visualFixAttempted = false
+    private var visualFixStarted = false
+    private var visualFixRunning = false
 
     fun isActive() = active
 
-    fun start(dynamicCode: String) {
+    fun start(dynamicCode: String, enableVisualFix: Boolean = false) {
         require(dynamicCode.isNotBlank() && dynamicCode.all { it.isDigit() })
         if (active) return
         code = dynamicCode
+        allowVisualFix = enableVisualFix && !simulation
+        visualFixAttempted = false
+        visualFixStarted = false
+        visualFixRunning = false
         stage = "OPEN_COPY"
         ticks = 0
         confirmationMayHaveBeenSent = false
@@ -43,8 +51,90 @@ class SiteRunner(
                 "проверьте результат на сайте перед повторной попыткой.")
     }
 
+    /** Evaluates only the bounded visual trial, NEVER driver.js or financial actions. */
+    private fun evaluateVisualTrial(phase: String, callback: (JSONObject?) -> Unit) {
+        if (!active || simulation) return
+        val js = view.context.assets.open("dialog-height-trial.js")
+            .bufferedReader().use { it.readText() }
+            .replace("__PHASE__", phase)
+        view.evaluateJavascript(js) { raw ->
+            if (!active) return@evaluateJavascript
+            val parsed = try {
+                JSONObject(JSONTokener(raw).nextValue() as String)
+            } catch (_: Exception) { null }
+            callback(parsed)
+        }
+    }
+
+    /** Best-effort restoration, including when the runner is stopping. */
+    private fun restoreVisualTrial() {
+        if (!visualFixStarted) return
+        visualFixStarted = false
+        try {
+            val js = view.context.assets.open("dialog-height-trial.js")
+                .bufferedReader().use { it.readText() }
+                .replace("__PHASE__", "restore")
+            view.evaluateJavascript(js) { }
+        } catch (_: Exception) {
+            progress("Не удалось восстановить CSS окна. Перезагрузи страницу вручную.")
+        }
+    }
+
+    private fun tryVisualFix() {
+        if (!active || simulation || !allowVisualFix || visualFixAttempted) {
+            finish(OrderStatus.ERROR, "Автоматическое исправление окна недоступно или уже выполнялось. " +
+                "Подтверждение не отправлялось.")
+            return
+        }
+        visualFixAttempted = true
+        visualFixRunning = true
+        val initialUrl = view.url.orEmpty()
+        progress("Пробую восстановить высоту окна подтверждения без нажатия «Подтв.»")
+        fun abort(reason: String) {
+            restoreVisualTrial()
+            finish(OrderStatus.ERROR, "$reason Подтверждение не отправлялось.")
+        }
+        fun check(phase: Int) {
+            if (!active || !visualFixRunning) return
+            if (view.url != initialUrl) {
+                abort("Адрес страницы изменился во время исправления.")
+                return
+            }
+            evaluateVisualTrial("check") { r ->
+                if (!active || !visualFixRunning) return@evaluateVisualTrial
+                if (r?.optString("status") != "checked" ||
+                    r.optString("state") != "visible") {
+                    abort("Кнопка подтверждения не осталась доступной после исправления.")
+                } else if (phase == 1) {
+                    handler.postDelayed({ check(2) }, 1500)
+                } else {
+                    visualFixRunning = false
+                    progress("Исправление окна проверено дважды. Подготовка к однократному подтверждению.")
+                    // No immediate click: native runner first requests WAIT_CONFIRM_SEND,
+                    // which checks the real page again in a separate JS evaluation.
+                    poll()
+                }
+            }
+        }
+        evaluateVisualTrial("start") { r ->
+            if (!active || !visualFixRunning) return@evaluateVisualTrial
+            if (r?.optString("status") != "started") {
+                visualFixRunning = false
+                finish(OrderStatus.ERROR, "Не удалось безопасно исправить окно: " +
+                    (r?.optString("status") ?: "нет ответа") + ". Подтверждение не отправлялось.")
+            } else {
+                visualFixStarted = true
+                if (r.optString("state") != "visible") {
+                    abort("Кнопка после изменения размеров остаётся перекрытой.")
+                } else {
+                    handler.postDelayed({ check(1) }, 500)
+                }
+            }
+        }
+    }
+
     private fun poll() {
-        if (!active) return
+        if (!active || visualFixRunning) return
         // Avoid resubmitting if the financial outcome cannot be established.
         ticks++
         if (ticks > 75) {
@@ -74,7 +164,7 @@ class SiteRunner(
         }
         // Mark uncertainty BEFORE executing a script that may press financial confirmation.
         // A stop/process death between the click and JS callback must not look like failure.
-        if (stage == "WAIT_CONFIRM") confirmationMayHaveBeenSent = true
+        if (stage == "WAIT_CONFIRM_SEND") confirmationMayHaveBeenSent = true
         val js = script!!.replace("__STAGE__", JSONObject.quote(stage)).replace("__CODE__", JSONObject.quote(code))
         view.evaluateJavascript(js) { raw ->
             if (!active) return@evaluateJavascript
@@ -90,11 +180,16 @@ class SiteRunner(
                             "ENTER_CODE" -> "Подготовка поля цифрового кода"
                             "WAIT_DETAILS" -> "Код отправлен, ожидание параметров заказа"
                             "WAIT_CONFIRM" -> "Ожидание подтверждения суммы"
+                            "WAIT_CONFIRM_SEND" -> "Проверка доступности перед однократным подтверждением"
                             "WAIT_RESULT" -> "Подтверждение отправлено, ожидание результата"
                             else -> "Обработка заказа"
                         })
                     }
                     "wait" -> progress(obj.optString("detail"))
+                    "repair_needed" -> {
+                        tryVisualFix()
+                        return@evaluateJavascript
+                    }
                     "error" -> {
                         finish(statusAfterInterruption(confirmationMayHaveBeenSent),
                             obj.optString("detail") + if (confirmationMayHaveBeenSent)
@@ -118,7 +213,10 @@ class SiteRunner(
     }
 
     private fun finish(status: OrderStatus, detail: String) {
+        restoreVisualTrial()
         active = false
+        visualFixRunning = false
+        allowVisualFix = false
         code = ""
         stage = ""
         confirmationMayHaveBeenSent = false
