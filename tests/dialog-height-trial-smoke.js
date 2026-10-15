@@ -78,6 +78,6 @@ assert.match(main,/Пробное исправление окна/);
 assert.match(main,/Проверка устойчивости \(10 секунд\)/);
 assert.match(method,/listOf\(500L,2000L,5000L,10000L\)/);
 assert.match(method,/sample\(index\+1\)/);
-assert.match(method,/rollback\(report\)/);
+assert.match(method,/fun rollback\(report:String\)/);
 assert.match(method,/siteView\.url != originalUrl/);
 console.log('Reversible dialog-height trial tests passed');
