@@ -576,6 +576,8 @@ class MainActivity : ComponentActivity() {
         var selectedOrderId by remember { mutableStateOf<String?>(notificationOrderId) }
         var code by remember { mutableStateOf("") }
         var live by remember { mutableStateOf(false) }
+        // A new financial-capable behavior: must be explicitly enabled for each session.
+        var allowAutoWindowFix by remember { mutableStateOf(false) }
         var fullScreenSite by remember { mutableStateOf(false) }
         BackHandler(enabled = fullScreenSite) { fullScreenSite = false }
         var resumeCounter by remember { mutableIntStateOf(0) }
@@ -772,8 +774,22 @@ class MainActivity : ComponentActivity() {
                                         Text("Тестовый режим", Modifier.weight(1f))
                                         Switch(checked = !live, enabled = !runnerActive, onCheckedChange = { live = !it })
                                     }
-                                    if (live) Text("ЭКСПЕРИМЕНТАЛЬНО: при запуске будет подтверждён реальный финансовый заказ на сайте. Механизм ещё не проверен в личном кабинете.", color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall)
+                                    if (live) {
+                                        Text("ЭКСПЕРИМЕНТАЛЬНО: при запуске может быть подтверждён реальный финансовый заказ на сайте. Проверка отправки заказа на живом сайте ещё не завершена.",
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Автоматически исправлять перекрытие окна",
+                                                Modifier.weight(1f))
+                                            Switch(
+                                                checked = allowAutoWindowFix,
+                                                enabled = !runnerActive && !siteWindowTestActive,
+                                                onCheckedChange = { allowAutoWindowFix = it }
+                                            )
+                                        }
+                                        Text("По умолчанию выключено. При включении приложение может сделать реальную финансовую операцию после восстановления окна. При неизвестном результате автоматического повтора нет.",
+                                            style = MaterialTheme.typography.bodySmall)
+                                    }
                                     Button(onClick = {
                                         val id = selected.id
                                         val submittedCode = code
@@ -789,7 +805,7 @@ class MainActivity : ComponentActivity() {
                                             orders = store.orders()
                                             tab = 2
                                             runnerActive = true
-                                            siteRunner.start(submittedCode)
+                                            siteRunner.start(submittedCode, allowAutoWindowFix)
                                         }
                                     }, enabled = code.isNotBlank() && !runnerActive && !siteWindowTestActive && (!live || siteError == null), modifier = Modifier.fillMaxWidth()) {
                                         Text(if (live) "Выполнить заказ на сайте" else "Проверить тестовый сценарий")
