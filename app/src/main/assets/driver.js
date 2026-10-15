@@ -86,15 +86,29 @@
     if (copy.length !== 1 || !safeClick(copy[0])) return report('error', 'Не удалось однозначно найти кнопку заказа');
     return report('advance', 'WAIT_CONFIRM');
   }
-  if (stage === 'WAIT_CONFIRM') {
-    if (!/вы уверены.*хотите скопировать/.test(text)) return report('wait', 'Ожидание окна подтверждения');
-    const confirmations = buttons('Подтв.');
-    if (confirmations.length !== 1) return report('error', 'Не найдено однозначное подтверждение финансового заказа');
-    const button = confirmations[0];
-    if (!button.closest?.('[role="dialog"], .van-dialog, .van-popup') || !userReachable(button)) {
-      return report('error', 'Кнопка подтверждения перекрыта или недоступна. ' +
-        'Автоматическое нажатие НЕ выполнялось; проверьте состояние заказа на сайте.');
+  if (stage === 'WAIT_CONFIRM' || stage === 'WAIT_CONFIRM_SEND') {
+    if (!/вы уверены.*хотите скопировать/.test(text)) {
+      return stage === 'WAIT_CONFIRM_SEND' ?
+        report('error', 'Окно подтверждения исчезло перед отправкой. Результат проверьте на сайте.') :
+        report('wait', 'Ожидание окна подтверждения');
     }
+    const confirmations = buttons('Подтв.');
+    if (confirmations.length !== 1)
+      return report('error', 'Не найдено однозначное подтверждение финансового заказа');
+    const button = confirmations[0];
+    const dialog = button.closest?.('[role="dialog"], .van-dialog, .van-popup');
+    if (!dialog || !dialog.contains?.(button) || !visible(dialog) || button.disabled)
+      return report('error', 'Подтверждение отключено или находится вне диалогового окна');
+    if (!userReachable(button)) {
+      // Only the native driver may decide whether to attempt a one-shot visual fix.
+      // Never repair and click in the same JS execution.
+      return stage === 'WAIT_CONFIRM' && !simulated ?
+        report('repair_needed', 'Кнопка подтверждения перекрыта') :
+        report('error', 'Подтверждение недоступно. Автоматическое нажатие не выполнялось.');
+    }
+    if (stage === 'WAIT_CONFIRM') return report('advance', 'WAIT_CONFIRM_SEND');
+    // This is the ONLY financial confirmation step; the native runner marks
+    // the outcome uncertain BEFORE evaluating this JS.
     if (!safeClick(button)) return report('error', 'Кнопка подтверждения отключена');
     return report('advance', 'WAIT_RESULT');
   }
