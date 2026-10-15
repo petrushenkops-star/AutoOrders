@@ -68,7 +68,10 @@ class SiteRunner(
 
     /** Best-effort restoration, including when the runner is stopping. */
     private fun restoreVisualTrial() {
-        if (!visualFixStarted) return
+        // A pending JavaScript start may have changed CSS before its callback.
+        // Always send a restore when a visual repair was attempted, even if
+        // the native callback has not yet marked it as started.
+        if (!visualFixStarted && !visualFixAttempted) return
         visualFixStarted = false
         try {
             val js = view.context.assets.open("dialog-height-trial.js")
@@ -216,6 +219,7 @@ class SiteRunner(
         restoreVisualTrial()
         active = false
         visualFixRunning = false
+        visualFixAttempted = false
         allowVisualFix = false
         code = ""
         stage = ""
