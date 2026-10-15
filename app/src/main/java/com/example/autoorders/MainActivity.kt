@@ -772,7 +772,10 @@ class MainActivity : ComponentActivity() {
                                     )
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("Тестовый режим", Modifier.weight(1f))
-                                        Switch(checked = !live, enabled = !runnerActive, onCheckedChange = { live = !it })
+                                        Switch(checked = !live, enabled = !runnerActive, onCheckedChange = {
+                                            live = !it
+                                            if (it) allowAutoWindowFix = false
+                                        })
                                     }
                                     if (live) {
                                         Text("ЭКСПЕРИМЕНТАЛЬНО: при запуске может быть подтверждён реальный финансовый заказ на сайте. Проверка отправки заказа на живом сайте ещё не завершена.",
@@ -805,7 +808,9 @@ class MainActivity : ComponentActivity() {
                                             orders = store.orders()
                                             tab = 2
                                             runnerActive = true
-                                            siteRunner.start(submittedCode, allowAutoWindowFix)
+                                            val fixForThisOrder = allowAutoWindowFix
+                                            allowAutoWindowFix = false
+                                            siteRunner.start(submittedCode, fixForThisOrder)
                                         }
                                     }, enabled = code.isNotBlank() && !runnerActive && !siteWindowTestActive && (!live || siteError == null), modifier = Modifier.fillMaxWidth()) {
                                         Text(if (live) "Выполнить заказ на сайте" else "Проверить тестовый сценарий")
