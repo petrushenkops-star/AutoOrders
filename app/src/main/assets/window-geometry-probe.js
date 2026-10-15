@@ -64,6 +64,23 @@
     const top=document.elementFromPoint?.(bx,by);
     const isInside=br.width>0&&br.height>0&&bx>=pr.left&&bx<=pr.right&&
       by>=pr.top&&by<=pr.bottom;
+    // Read-only box model diagnostics for a zero-height dialog.
+    const boxMetrics=e=>{
+      if(!e)return null;
+      const style=getComputedStyle(e);
+      const number=p=>Number.isFinite(Number(e[p]))?rounded(e[p]):null;
+      const value=p=>String(style[p]||'unknown').slice(0,32);
+      return {kind:typ(e),rect:rect(e),height:value('height'),
+        minHeight:value('minHeight'),maxHeight:value('maxHeight'),
+        offsetHeight:number('offsetHeight'),clientHeight:number('clientHeight'),
+        scrollHeight:number('scrollHeight'),
+        overflowY:value('overflowY'),position:value('position'),
+        display:value('display'),children:Math.min(e.children?.length||0,99)};
+    };
+    const ancestorBoxes=[];
+    for(let e=popup,i=0;e&&i<4;e=e.parentElement,i++)ancestorBoxes.push(boxMetrics(e));
+    const childBoxes=[...popup.children].slice(0,5).map(boxMetrics);
+    const offsetBox=boxMetrics(button.offsetParent);
     const viewport=window.visualViewport||null;
     const contentW=window.innerWidth||0,contentH=window.innerHeight||0;
     const inView=br.width>0&&br.height>0&&bx>=0&&by>=0&&
@@ -83,6 +100,7 @@
       topKind:typ(top),
       buttonStyle:style(button),dialogStyle:style(popup),blockerStyle:style(blocker),
       dialogParentType:typ(popup.parentElement),
+      ancestorBoxes,childBoxes,offsetBox,
       viewport:{innerW:rounded(contentW),innerH:rounded(contentH),
         visualW:rounded(viewport?.width??contentW),
         visualH:rounded(viewport?.height??contentH),
