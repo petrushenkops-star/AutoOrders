@@ -492,8 +492,8 @@ class MainActivity : ComponentActivity() {
                 finish("Изменение не выполнялось: $status.")
                 return@start
             }
-            val height=data.optInt("targetHeight")
-            val immediate=data.optString("state","unknown")
+            val height=data?.optInt("targetHeight") ?: 0
+            val immediate=data?.optString("state","unknown") ?: "unknown"
             siteDiagnostics="Высота временно установлена: $height px."+
                 "\nСразу после изменения: $immediate."+
                 "\nПроверяю видимость без нажатий…"
