@@ -65,7 +65,7 @@ assert.equal(rerender.run('check').status,'page_changed');
 assert.equal(rerender.run('restore').status,'restored');
 assert.equal(rerender.mutations(),0);
 const main=fs.readFileSync('app/src/main/java/com/example/autoorders/MainActivity.kt','utf8');
-const first=main.indexOf('private fun trialFixDialogHeight()');
+const first=main.indexOf('private fun trialFixDialogHeight(');
 const last=main.indexOf('private var activeOrderId:',first);
 assert.ok(first>=0&&last>first);
 const method=main.slice(first,last);
