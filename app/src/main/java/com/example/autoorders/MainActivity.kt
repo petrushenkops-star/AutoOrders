@@ -443,6 +443,86 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+    /**
+     * Only a reversible visual trial. The native modal blocks interaction with
+     * the WebView. No confirmation click, code entry or order submission.
+     */
+    private fun trialFixDialogHeight() {
+        if (runnerActive || siteWindowTestActive) return
+        val originalUrl=siteView.url.orEmpty()
+        val uri=Uri.parse(originalUrl)
+        val host=uri.host.orEmpty()
+        if (uri.scheme!="https" ||
+            !(host=="lxcompintb.com"||host.endsWith(".lxcompintb.com"))) {
+            siteDiagnostics="Открой окно подтверждения на lxcompintb.com."
+            showInspectionDialog=true
+            return
+        }
+        siteWindowTestActive=true
+        showInspectionDialog=true
+        siteDiagnostics="Проверяю высоту диалога. Изменения будут отменены через 2 секунды."
+
+        fun finish(report:String) {
+            if (!siteWindowTestActive||isFinishing||isDestroyed) return
+            siteDiagnostics=report+"\n\nТест не нажимает «Подтв.» и не отправляет заказ."
+            siteWindowTestActive=false
+        }
+        fun execute(phase:String,callback:(JSONObject?)->Unit) {
+            if (!siteWindowTestActive||isFinishing||isDestroyed) return
+            val script=assets.open("dialog-height-trial.js").bufferedReader()
+                .use { it.readText() }.replace("__PHASE__",phase)
+            siteView.evaluateJavascript(script) { raw ->
+                if (!siteWindowTestActive||isFinishing||isDestroyed) return@evaluateJavascript
+                val obj=try {
+                    JSONObject(JSONTokener(raw).nextValue() as String)
+                } catch (_:Exception) { null }
+                callback(obj)
+            }
+        }
+        fun rollback(report:String) {
+            execute("restore") { response ->
+                val status=response?.optString("status")?:"no_response"
+                finish(report+"\nВосстановление исходных стилей: $status.")
+            }
+        }
+        execute("start") start@{ data ->
+            val status=data?.optString("status")?:"no_response"
+            if (status!="started") {
+                finish("Изменение не выполнялось: $status.")
+                return@start
+            }
+            val height=data.optInt("targetHeight")
+            val immediate=data.optString("state","unknown")
+            siteDiagnostics="Высота временно установлена: $height px."+
+                "\nСразу после изменения: $immediate."+
+                "\nПроверяю видимость без нажатий…"
+            siteWindowTestHandler.postDelayed(first@{
+                if (!siteWindowTestActive) return@first
+                execute("check") firstResult@{ firstData ->
+                    val first=if(firstData?.optString("status")=="checked")
+                        firstData.optString("state","unknown") else "unknown"
+                    siteWindowTestHandler.postDelayed(second@{
+                        if (!siteWindowTestActive) return@second
+                        execute("check") secondResult@{ lastData ->
+                            val second=if(lastData?.optString("status")=="checked")
+                                lastData.optString("state","unknown") else "unknown"
+                            val report="До изменения: covered."+
+                                "\nПробная высота: $height px."+
+                                "\nСразу: $immediate."+
+                                "\nЧерез 0,5 секунды: $first."+
+                                "\nЧерез 2 секунды: $second."+
+                                if (first=="visible" && second=="visible")
+                                    "\nДоступность кнопки временно подтверждена."
+                                else "\nПробное исправление не подтвердилось."
+                            rollback(report)
+                        }
+                    },1500)
+                }
+            },500)
+        }
+    }
+
     private var activeOrderId: String? = null
 
     override fun onNewIntent(intent: Intent) {
@@ -540,6 +620,10 @@ class MainActivity : ComponentActivity() {
                             onClick = { testSiteWindow() },
                             enabled = !runnerActive && !siteWindowTestActive
                         ) { Text("Тест окна") }
+                        TextButton(
+                            onClick = { trialFixDialogHeight() },
+                            enabled = !runnerActive && !siteWindowTestActive
+                        ) { Text("Пробное исправление") }
                         TextButton(
                             onClick = { inspectSite() },
                             enabled = !runnerActive && !siteWindowTestActive
@@ -747,6 +831,10 @@ class MainActivity : ComponentActivity() {
                         OutlinedButton(onClick = { testSiteWindow() },
                             enabled = !runnerActive && !siteWindowTestActive) {
                             Text("Тест окна без заказа")
+                        }
+                        OutlinedButton(onClick = { trialFixDialogHeight() },
+                            enabled = !runnerActive && !siteWindowTestActive) {
+                            Text("Пробное исправление окна")
                         }
                         Text(siteDiagnostics, style = MaterialTheme.typography.bodySmall)
                         OutlinedButton(
