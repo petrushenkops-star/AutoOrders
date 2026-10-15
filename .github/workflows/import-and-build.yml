@@ -36,6 +36,7 @@ jobs:
       - name: Offline browser driver tests
         run: |
           node tests/driver-smoke.js
+          node tests/live-auto-window-fix-smoke.js
           node tests/navigation-smoke.js
           node tests/page-inspector-smoke.js
           node tests/reveal-confirmation-smoke.js
