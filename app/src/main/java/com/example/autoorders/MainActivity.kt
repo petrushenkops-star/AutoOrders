@@ -375,6 +375,16 @@ class MainActivity : ComponentActivity() {
             return "x="+rect.optInt("x")+", y="+rect.optInt("y")+
                 ", ширина="+rect.optInt("w")+", высота="+rect.optInt("h")
         }
+        fun boxSummary(b:JSONObject?):String {
+            if (b==null) return "нет"
+            return b.optString("kind")+": "+rectSummary(b.optJSONObject("rect"))+
+                "; CSS height="+b.optString("height")+
+                "; min-height="+b.optString("minHeight")+
+                "; scrollHeight="+b.optInt("scrollHeight")+
+                "; offsetHeight="+b.optInt("offsetHeight")+
+                "; overflowY="+b.optString("overflowY")+
+                "; position="+b.optString("position")
+        }
         fun format(snapshot:JSONObject?):String {
             if(snapshot==null)return "Нет ответа JavaScript."
             if(snapshot.optString("status")!="ok")
@@ -403,7 +413,21 @@ class MainActivity : ComponentActivity() {
                 (v?.optInt("visualH")?:0)+
                 "\nСмещение visualViewport: "+
                 (v?.optInt("offsetX")?:0)+", "+(v?.optInt("offsetY")?:0)+
-                "; масштаб: "+(v?.optDouble("scale")?:1.0)
+                "; масштаб: "+(v?.optDouble("scale")?:1.0)+
+                "\n\nРазмеры диалога и родительских контейнеров:\n"+
+                (snapshot.optJSONArray("ancestorBoxes")?.let { boxes ->
+                    (0 until minOf(boxes.length(),4)).joinToString("\n") { i ->
+                        (i+1).toString()+". "+boxSummary(boxes.optJSONObject(i))
+                    }
+                } ?: "нет")+
+                "\n\nВнутренние элементы:\n"+
+                (snapshot.optJSONArray("childBoxes")?.let { boxes ->
+                    (0 until minOf(boxes.length(),5)).joinToString("\n") { i ->
+                        (i+1).toString()+". "+boxSummary(boxes.optJSONObject(i))
+                    }
+                } ?: "нет")+
+                "\nКонтейнер позиционирования кнопки: "+
+                boxSummary(snapshot.optJSONObject("offsetBox"))
         }
         readSnapshot first@{ a ->
             if (!valid()) return@first
