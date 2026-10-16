@@ -24,6 +24,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
@@ -57,6 +60,10 @@ class MainActivity : ComponentActivity() {
     private var siteDiagnostics by mutableStateOf("Диагностика ещё не выполнялась")
     private var showInspectionDialog by mutableStateOf(false)
     private var siteWindowTestActive by mutableStateOf(false)
+    private var visualPreviewActive by mutableStateOf(false)
+    private var visualPreviewStatus by mutableStateOf("")
+    private var visualPreviewUrl: String? = null
+    private var visualPreviewStartMillis: Long = 0L
     private val siteWindowTestHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var runnerActive by mutableStateOf(false)
     private var notificationOrderId by mutableStateOf<String?>(null)
@@ -552,6 +559,122 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+    /**
+     * Preview the corrected WebView without covering it with a diagnostic modal.
+     * All physical gestures are swallowed by a Compose layer and a WebView
+     * touch listener; the preview never invokes an order or confirmation click.
+     */
+    private fun previewFixedDialog() {
+        if (runnerActive || siteWindowTestActive || visualPreviewActive) return
+        val url=siteView.url.orEmpty()
+        val uri=Uri.parse(url)
+        val host=uri.host.orEmpty()
+        if (uri.scheme!="https" ||
+            !(host=="lxcompintb.com"||host.endsWith(".lxcompintb.com"))) {
+            siteDiagnostics="Открой окно подтверждения на lxcompintb.com."
+            showInspectionDialog=true
+            return
+        }
+        visualPreviewActive=true
+        siteWindowTestActive=true
+        visualPreviewUrl=url
+        showInspectionDialog=false
+        visualPreviewStatus="Подготавливаю видимый предпросмотр. Касания сайта заблокированы."
+        visualPreviewStartMillis=android.os.SystemClock.elapsedRealtime()
+        siteView.setOnTouchListener { _, _ -> visualPreviewActive }
+
+        fun sample() {
+            if (!visualPreviewActive || isFinishing || isDestroyed) return
+            if (siteView.url != url) {
+                stopVisualPreview("Адрес страницы изменился. Просмотр остановлен.")
+                return
+            }
+            val js=assets.open("dialog-height-trial.js").bufferedReader()
+                .use { it.readText() }.replace("__PHASE__", "check")
+            siteView.evaluateJavascript(js) { raw ->
+                if (!visualPreviewActive || isFinishing || isDestroyed) return@evaluateJavascript
+                val r=try {
+                    JSONObject(JSONTokener(raw).nextValue() as String)
+                } catch (_:Exception) { null }
+                if (r?.optString("status")!="checked" ||
+                    r.optString("state")!="visible") {
+                    stopVisualPreview("Окно снова недоступно: "+
+                        (r?.optString("status")?:"нет ответа")+
+                        ". Предпросмотр остановлен.")
+                } else {
+                    val seconds=(android.os.SystemClock.elapsedRealtime()-
+                        visualPreviewStartMillis)/1000L
+                    if (seconds>=20L) {
+                        stopVisualPreview("20 секунд просмотра завершены. "+
+                            "Доступность кнопки подтверждена без нажатия.")
+                    } else {
+                        visualPreviewStatus="Просмотр исправленного окна: "+
+                            "$seconds из 20 секунд. Касания по сайту заблокированы."
+                        siteWindowTestHandler.postDelayed({ sample() },1000L)
+                    }
+                }
+            }
+        }
+        val js=assets.open("dialog-height-trial.js").bufferedReader()
+            .use { it.readText() }.replace("__PHASE__", "start")
+        siteView.evaluateJavascript(js) { raw ->
+            if (!visualPreviewActive || isFinishing || isDestroyed) return@evaluateJavascript
+            val r=try {
+                JSONObject(JSONTokener(raw).nextValue() as String)
+            } catch (_:Exception) { null }
+            if (r?.optString("status")!="started" ||
+                r.optString("state")!="visible") {
+                stopVisualPreview("Исправленное окно недоступно: "+
+                    (r?.optString("status")?:"нет ответа"))
+            } else {
+                visualPreviewStatus="Предпросмотр: окно исправлено, "+
+                    "все касания по сайту заблокированы (20 секунд)."
+                siteWindowTestHandler.postDelayed({ sample() },1000L)
+            }
+        }
+        // Fail closed if the page doesn't respond to a scripted check.
+        siteWindowTestHandler.postDelayed({
+            if (visualPreviewActive)
+                stopVisualPreview("Предпросмотр завершён по защитному тайм-ауту.")
+        },24000L)
+    }
+
+    /** Never leave CSS altered after the preview, including on Back or pause. */
+    private fun stopVisualPreview(reason: String, showReport: Boolean = true) {
+        if (!visualPreviewActive) return
+        siteWindowTestHandler.removeCallbacksAndMessages(null)
+        // Keep native touch blocking until the CSS restore callback.
+        val js=assets.open("dialog-height-trial.js").bufferedReader()
+            .use { it.readText() }.replace("__PHASE__", "restore")
+        siteView.evaluateJavascript(js) { raw ->
+            val status=try {
+                JSONObject(JSONTokener(raw).nextValue() as String).optString("status")
+            } catch (_:Exception) { "нет ответа" }
+            visualPreviewActive=false
+            siteWindowTestActive=false
+            visualPreviewUrl=null
+            siteView.setOnTouchListener(null)
+            siteDiagnostics=reason+"\nВосстановление стилей: $status."+
+                "\nПредпросмотр не нажимал «Подтв.» и не отправлял заказ."
+            if (showReport && !isFinishing && !isDestroyed)
+                showInspectionDialog=true
+        }
+        // Additional fail-safe for a missing WebView callback.
+        siteWindowTestHandler.postDelayed({
+            if (visualPreviewActive) {
+                visualPreviewActive=false
+                siteWindowTestActive=false
+                visualPreviewUrl=null
+                siteView.setOnTouchListener(null)
+                siteDiagnostics=reason+"\nНе удалось подтвердить возврат "+
+                    "стилей. Перезагрузи страницу до дальнейших действий."
+                if (showReport && !isFinishing && !isDestroyed)
+                    showInspectionDialog=true
+            }
+        },1500L)
+    }
+
     private var activeOrderId: String? = null
 
     override fun onNewIntent(intent: Intent) {
@@ -579,7 +702,10 @@ class MainActivity : ComponentActivity() {
         // A new financial-capable behavior: must be explicitly enabled for each session.
         var allowAutoWindowFix by remember { mutableStateOf(false) }
         var fullScreenSite by remember { mutableStateOf(false) }
-        BackHandler(enabled = fullScreenSite) { fullScreenSite = false }
+        BackHandler(enabled = fullScreenSite) {
+            if (visualPreviewActive) stopVisualPreview("Просмотр завершён кнопкой «Назад».")
+            else fullScreenSite = false
+        }
         var resumeCounter by remember { mutableIntStateOf(0) }
         val launchNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         LaunchedEffect(notificationOrderId) {
@@ -645,7 +771,13 @@ class MainActivity : ComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            TextButton(onClick = { fullScreenSite = false }) {
+                            TextButton(
+                                onClick = {
+                                    if (visualPreviewActive)
+                                        stopVisualPreview("Просмотр завершён вручную.")
+                                    else fullScreenSite = false
+                                }
+                            ) {
                                 Text("← Назад")
                             }
                             TextButton(
@@ -671,15 +803,50 @@ class MainActivity : ComponentActivity() {
                                 enabled = !runnerActive && !siteWindowTestActive
                             ) { Text("Тест 10 секунд") }
                         }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            if (visualPreviewActive) {
+                                Button(onClick = {
+                                    stopVisualPreview("Просмотр остановлен пользователем.")
+                                }) { Text("Завершить просмотр") }
+                            } else {
+                                OutlinedButton(
+                                    onClick = { previewFixedDialog() },
+                                    enabled = !runnerActive && !siteWindowTestActive
+                                ) { Text("Показать исправленное окно") }
+                            }
+                        }
+                        if (visualPreviewActive)
+                            Text(visualPreviewStatus,
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                AndroidView(
-                    factory = {
-                        (siteView.parent as? android.view.ViewGroup)?.removeView(siteView)
-                        siteView
-                    },
-                    modifier = Modifier.fillMaxWidth().weight(1f)
-                )
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    AndroidView(
+                        factory = {
+                            (siteView.parent as? android.view.ViewGroup)?.removeView(siteView)
+                            siteView
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (visualPreviewActive) {
+                        // An invisible full-area barrier keeps the dialog in view
+                        // while consuming touches before they reach AndroidView.
+                        Box(
+                            modifier = Modifier.matchParentSize().pointerInput(Unit) {
+                                awaitEachGesture {
+                                    do {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        event.changes.forEach { it.consume() }
+                                    } while (event.changes.any { it.pressed })
+                                }
+                            }
+                        )
+                    }
+                }
             }
         } else {
         Scaffold(
@@ -749,6 +916,31 @@ class MainActivity : ComponentActivity() {
                     1 -> {
                         Text("Заказы", style = MaterialTheme.typography.titleMedium)
                         Text("В назначенное время появится уведомление. Для каждого заказа вводи новый цифровой код.", style = MaterialTheme.typography.bodySmall)
+                        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("Исправление окна для реальных заказов",
+                                    fontWeight = FontWeight.SemiBold)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Автоматически исправлять перекрытие окна",
+                                        modifier = Modifier.weight(1f))
+                                    Switch(
+                                        checked = allowAutoWindowFix,
+                                        enabled = live && selected != null &&
+                                            !runnerActive && !siteWindowTestActive,
+                                        onCheckedChange = { allowAutoWindowFix = it }
+                                    )
+                                }
+                                Text(
+                                    if (!live || selected == null)
+                                        "Чтобы включить, выбери ожидающий заказ и выключи «Тестовый режим» ниже."
+                                    else "Выключено по умолчанию; разрешение действует только для одного реального заказа. Запуск может подтвердить финансовую операцию.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
                         OutlinedButton(onClick = {
                             val entry = OrderEntry(slotId = null)
                             store.addOrder(entry)
@@ -781,15 +973,6 @@ class MainActivity : ComponentActivity() {
                                         Text("ЭКСПЕРИМЕНТАЛЬНО: при запуске может быть подтверждён реальный финансовый заказ на сайте. Проверка отправки заказа на живом сайте ещё не завершена.",
                                             color = MaterialTheme.colorScheme.error,
                                             style = MaterialTheme.typography.bodySmall)
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Автоматически исправлять перекрытие окна",
-                                                Modifier.weight(1f))
-                                            Switch(
-                                                checked = allowAutoWindowFix,
-                                                enabled = !runnerActive && !siteWindowTestActive,
-                                                onCheckedChange = { allowAutoWindowFix = it }
-                                            )
-                                        }
                                         Text("По умолчанию выключено. При включении приложение может сделать реальную финансовую операцию после восстановления окна. При неизвестном результате автоматического повтора нет.",
                                             style = MaterialTheme.typography.bodySmall)
                                     }
@@ -902,6 +1085,12 @@ class MainActivity : ComponentActivity() {
                             enabled = !runnerActive && !siteWindowTestActive) {
                             Text("Проверка устойчивости (10 секунд)")
                         }
+                        OutlinedButton(onClick = {
+                            fullScreenSite = true
+                            previewFixedDialog()
+                        }, enabled = !runnerActive && !siteWindowTestActive) {
+                            Text("Показать исправленное окно (без заказов)")
+                        }
                         Text(siteDiagnostics, style = MaterialTheme.typography.bodySmall)
                         OutlinedButton(
                             onClick = { fullScreenSite = true },
@@ -931,7 +1120,15 @@ class MainActivity : ComponentActivity() {
         OrderStatus.UNKNOWN -> "Результат неизвестен — проверьте на сайте"
     }
 
+    override fun onPause() {
+        if (visualPreviewActive)
+            stopVisualPreview("Приложение свернуто. Просмотр остановлен.", showReport = false)
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        if (visualPreviewActive)
+            stopVisualPreview("Экран закрывается.", showReport = false)
         siteWindowTestActive = false
         siteWindowTestHandler.removeCallbacksAndMessages(null)
         if (siteRunner.isActive()) siteRunner.stop()
