@@ -24,7 +24,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
@@ -837,11 +836,11 @@ class MainActivity : ComponentActivity() {
                         // while consuming touches before they reach AndroidView.
                         Box(
                             modifier = Modifier.matchParentSize().pointerInput(Unit) {
-                                awaitEachGesture {
-                                    do {
+                                awaitPointerEventScope {
+                                    while (true) {
                                         val event = awaitPointerEvent(PointerEventPass.Initial)
                                         event.changes.forEach { it.consume() }
-                                    } while (event.changes.any { it.pressed })
+                                    }
                                 }
                             }
                         )
@@ -1085,12 +1084,13 @@ class MainActivity : ComponentActivity() {
                             enabled = !runnerActive && !siteWindowTestActive) {
                             Text("Проверка устойчивости (10 секунд)")
                         }
-                        OutlinedButton(onClick = {
-                            fullScreenSite = true
-                            previewFixedDialog()
-                        }, enabled = !runnerActive && !siteWindowTestActive) {
-                            Text("Показать исправленное окно (без заказов)")
+                        OutlinedButton(onClick = { fullScreenSite = true },
+                            enabled = !runnerActive && !siteWindowTestActive) {
+                            Text("Открыть визуальный предпросмотр")
                         }
+                        Text("На полноэкранном сайте нажми «Показать исправленное окно». "+
+                            "В течение 20 секунд все касания сайта будут заблокированы.",
+                            style = MaterialTheme.typography.bodySmall)
                         Text(siteDiagnostics, style = MaterialTheme.typography.bodySmall)
                         OutlinedButton(
                             onClick = { fullScreenSite = true },
