@@ -26,7 +26,7 @@ assert.match(full,/Box\(modifier = Modifier\.fillMaxWidth\(\)\.weight\(1f\)\)/);
 assert.match(full,/Modifier\.matchParentSize\(\)\.pointerInput\(Unit\)/);
 assert.match(full,/awaitPointerEvent\(PointerEventPass\.Initial\)/);
 assert.match(full,/event\.changes\.forEach \{ it\.consume\(\) \}/);
-assert.match(full,/if \(visualPreviewActive\) stopVisualPreview/);
+assert.match(full,/if \(visualPreviewActive\)\s+stopVisualPreview/);
 assert.match(source,/override fun onPause\(\)/);
 assert.match(source,/stopVisualPreview\("Приложение свернуто/);
 const order=source.slice(source.indexOf('1 -> {\n                        Text("Заказы"'),source.indexOf('2 -> {\n                        Text("Сайт и автоматизация"'));
