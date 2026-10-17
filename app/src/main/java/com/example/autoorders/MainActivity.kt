@@ -112,6 +112,15 @@ class MainActivity : ComponentActivity() {
         setContent { MaterialTheme { AutoOrdersApp() } }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::alarms.isInitialized) {
+            // An existing inexact scheduled alarm remains inexact after permission grant
+            // until we explicitly cancel and re-register it.
+            alarms.rescheduleAfterPermissionChange()
+        }
+    }
+
     /**
      * Read-only DOM inspection: no clicks, code values, cookies, or account data are collected.
      * Results are shown locally on the device and are never uploaded.
@@ -706,6 +715,7 @@ class MainActivity : ComponentActivity() {
             else fullScreenSite = false
         }
         var resumeCounter by remember { mutableIntStateOf(0) }
+        var noticeTestResult by remember { mutableStateOf("") }
         val launchNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         LaunchedEffect(notificationOrderId) {
             if (notificationOrderId != null) {
@@ -885,6 +895,34 @@ class MainActivity : ComponentActivity() {
                                     Uri.parse("package:$packageName")))
                             }) { Text("Разрешить точное расписание") }
                         }
+                        OutlinedButton(onClick = {
+                            noticeTestResult = testScheduleNotification(this@MainActivity)
+                        }) { Text("Проверить уведомление без заказа") }
+                        if (noticeTestResult.isNotBlank()) {
+                            Text("Результат проверки: $noticeTestResult. Проверь шторку уведомлений.",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        val lastEvent = remember(resumeCounter, logUpdate) { store.lastAlarmEvent() }
+                        if (lastEvent == null) {
+                            Text("Фоновые срабатывания пока не зарегистрированы.",
+                                style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            val difference = if (lastEvent.scheduledAt > 0L)
+                                (lastEvent.receivedAt - lastEvent.scheduledAt) / 1000L else null
+                            Text("Последнее срабатывание расписания:",
+                                fontWeight = FontWeight.SemiBold)
+                            Text("План: " +
+                                (if (lastEvent.scheduledAt > 0L) timeText(lastEvent.scheduledAt)
+                                 else "неизвестно") +
+                                "\nПолучено Android: " + timeText(lastEvent.receivedAt) +
+                                (if (difference != null) "\nЗадержка: $difference сек." else "") +
+                                "\nУведомление: " + lastEvent.notificationStatus,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text("Если будильник всё ещё срабатывает поздно при заблокированном телефоне, "+
+                            "проверь настройки батареи и фоновой работы для «Автозаказы». "+
+                            "Системные ограничения телефона могут задерживать события.",
+                            style = MaterialTheme.typography.bodySmall)
                         DayOfWeek.entries.forEach { day ->
                             val daySlots = slots.filter { it.day == day }.sortedBy { it.time }
                             ElevatedCard(Modifier.fillMaxWidth()) {
