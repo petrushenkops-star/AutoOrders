@@ -6,6 +6,9 @@ import org.json.JSONObject
 import java.time.DayOfWeek
 import java.time.LocalTime
 
+/** Only timing and delivery status, never codes or account information. */
+data class AlarmEvent(val scheduledAt: Long, val receivedAt: Long, val notificationStatus: String)
+
 /** Do not persist user codes or website passwords. Only schedule and order outcomes. */
 class LocalStore(context: Context) {
     private val prefs = context.getSharedPreferences("autoorders_local", Context.MODE_PRIVATE)
@@ -31,6 +34,20 @@ class LocalStore(context: Context) {
                 OrderStatus.valueOf(o.getString("status")), o.optString("details"))
         }.sortedByDescending { it.createdAtMillis }
     } catch (_: Exception) { emptyList() }
+
+    fun recordAlarmEvent(scheduledAt: Long, receivedAt: Long, notificationStatus: String) {
+        // Synchronous tiny write: the OS can reclaim a BroadcastReceiver's process immediately.
+        prefs.edit().putLong("last_alarm_expected", scheduledAt)
+            .putLong("last_alarm_received", receivedAt)
+            .putString("last_alarm_notice", notificationStatus).commit()
+    }
+
+    fun lastAlarmEvent(): AlarmEvent? {
+        val time = prefs.getLong("last_alarm_received", 0L)
+        if (time <= 0L) return null
+        return AlarmEvent(prefs.getLong("last_alarm_expected", 0L), time,
+            prefs.getString("last_alarm_notice", "Нет данных") ?: "Нет данных")
+    }
 
     /** On process death, preserve an uncertain financial outcome; no automatic replay. */
     fun recoverInterruptedOrders() {
