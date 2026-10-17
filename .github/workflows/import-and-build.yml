@@ -47,6 +47,7 @@ jobs:
           node tests/window-geometry-probe-smoke.js
           node tests/dialog-height-trial-smoke.js
           node tests/visual-preview-smoke.js
+          node tests/notification-schedule-smoke.js
           node tests/simulator-smoke.js
       - name: Unit tests and debug compilation
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
