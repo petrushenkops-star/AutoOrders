@@ -49,6 +49,7 @@ jobs:
       - name: Offline browser driver tests
         working-directory: max-signal-copy/project
         run: node tests/driver-smoke.js
+          node tests/ui-layout-smoke.js
 
       - name: Check responsive UI layout contract
         working-directory: max-signal-copy/project
