@@ -87,7 +87,7 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='8' versionName='0.3.6'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='9' versionName='0.3.6'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
