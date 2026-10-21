@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p max-signal-copy/project
-          base64 --decode max-signal-copy/source.zip.base64 > "$RUNNER_TEMP/max-source.zip"
+          base64 --decode max-signal-copy/source-0.3.1.zip.base64 > "$RUNNER_TEMP/max-source.zip"
           unzip -tq "$RUNNER_TEMP/max-source.zip"
           unzip -q "$RUNNER_TEMP/max-source.zip" -d max-signal-copy/project
           test -f max-signal-copy/project/app/build.gradle.kts
@@ -49,6 +49,10 @@ jobs:
       - name: Offline browser driver tests
         working-directory: max-signal-copy/project
         run: node tests/driver-smoke.js
+
+      - name: Check responsive UI layout contract
+        working-directory: max-signal-copy/project
+        run: node tests/ui-layout-smoke.js
 
       - name: Compile and run Kotlin unit tests
         working-directory: max-signal-copy/project
@@ -80,10 +84,12 @@ jobs:
           gradle --no-daemon :app:assembleRelease
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
+          badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='4' versionName='0.3.1'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.3.0-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.3.1-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -92,19 +98,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="max-copy-v0.3.0"
+          tag="max-copy-v0.3.1"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" MaxSignalCopy-0.3.0-signed.apk --target "$GITHUB_SHA" \
-              --title "MAX Автосигналы 0.3.0 — постоянная подпись" \
-              --notes "Первый подписанный релиз: ручной ввод кода и автоматизация внутри открытого приложения. Работа из фона и реальная торговля ещё не проверены." \
+            gh release create "$tag" MaxSignalCopy-0.3.1-signed.apk --target "$GITHUB_SHA" \
+              --title "MAX Автосигналы 0.3.1 — постоянная подпись" \
+              --notes "Исправлен интерфейс под экран Android: отступы системных панелей, адаптивное поле кода, расширенный WebView и полноэкранный режим. Подпись прежняя. Финансовые операции на реальном сайте не проверялись." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MaxSignalCopy-0.3.0-signed-apk
-          path: MaxSignalCopy-0.3.0-signed.apk
+          name: MaxSignalCopy-0.3.1-signed-apk
+          path: MaxSignalCopy-0.3.1-signed.apk
           if-no-files-found: error
