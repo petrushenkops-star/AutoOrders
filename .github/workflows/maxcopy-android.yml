@@ -1,0 +1,110 @@
+name: MAX Signal Copy — signed APK
+on:
+  push:
+    branches: [max-signal-copy]
+    paths:
+      - max-signal-copy/**
+      - .github/workflows/maxcopy-android.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: maxcopy-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Expand independent MAX app sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p max-signal-copy/project
+          base64 --decode max-signal-copy/source.zip.base64 > "$RUNNER_TEMP/max-source.zip"
+          unzip -tq "$RUNNER_TEMP/max-source.zip"
+          unzip -q "$RUNNER_TEMP/max-source.zip" -d max-signal-copy/project
+          test -f max-signal-copy/project/app/build.gradle.kts
+
+      - name: Offline browser driver tests
+        working-directory: max-signal-copy/project
+        run: node tests/driver-smoke.js
+
+      - name: Compile and run Kotlin unit tests
+        working-directory: max-signal-copy/project
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+
+      - name: Load existing permanent signing key
+        env:
+          AUTOORDERS_SIGNING_BUNDLE: ${{ secrets.AUTOORDERS_SIGNING_BUNDLE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$AUTOORDERS_SIGNING_BUNDLE" || { echo "::error::Repository secret AUTOORDERS_SIGNING_BUNDLE is missing."; exit 1; }
+          mkdir -p "$RUNNER_TEMP/maxcopy-signing"
+          printf '%s' "$AUTOORDERS_SIGNING_BUNDLE" | base64 --decode | tar -xz -C "$RUNNER_TEMP/maxcopy-signing"
+          test -s "$RUNNER_TEMP/maxcopy-signing/autoorders-release.p12"
+          pass="$(cat "$RUNNER_TEMP/maxcopy-signing/signing-password.txt")"
+          alias="$(cat "$RUNNER_TEMP/maxcopy-signing/key-alias.txt")"
+          echo "::add-mask::$pass"
+          echo "MAXCOPY_SIGNING_KEYSTORE=$RUNNER_TEMP/maxcopy-signing/autoorders-release.p12" >> "$GITHUB_ENV"
+          echo "MAXCOPY_SIGNING_PASSWORD=$pass" >> "$GITHUB_ENV"
+          echo "MAXCOPY_SIGNING_ALIAS=$alias" >> "$GITHUB_ENV"
+
+      - name: Sign Android release and verify certificate
+        working-directory: max-signal-copy/project
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleRelease
+          apk="app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
+          expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
+          printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
+          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.3.0-signed.apk"
+
+      - name: Publish stable signed APK to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="max-copy-v0.3.0"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
+          else
+            gh release create "$tag" MaxSignalCopy-0.3.0-signed.apk --target "$GITHUB_SHA" \
+              --title "MAX Автосигналы 0.3.0 — постоянная подпись" \
+              --notes "Первый подписанный релиз: ручной ввод кода и автоматизация внутри открытого приложения. Работа из фона и реальная торговля ещё не проверены." \
+              --prerelease
+          fi
+
+      - name: Preserve signed APK as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MaxSignalCopy-0.3.0-signed-apk
+          path: MaxSignalCopy-0.3.0-signed.apk
+          if-no-files-found: error
