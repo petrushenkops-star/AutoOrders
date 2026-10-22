@@ -87,11 +87,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='12' versionName='0.3.9'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='13' versionName='0.4.0'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.3.9-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.4.0-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -100,19 +100,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="max-copy-v0.3.9"
+          tag="max-copy-v0.4.0"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" MaxSignalCopy-0.3.9-signed.apk --target "$GITHUB_SHA" \
-              --title "MAX Автосигналы 0.3.9 — постоянная подпись" \
-              --notes "Расширена диагностика уведомлений MAX и поддержка заголовков групповых чатов и MessagingStyle. Автоматические сделки по умолчанию отключены; рабочий сценарий заказа не менялся. Постоянная подпись сохранена." \
+            gh release create "$tag" MaxSignalCopy-0.4.0-signed.apk --target "$GITHUB_SHA" \
+              --title "MAX Автосигналы 0.4.0 — постоянная подпись" \
+              --notes "Добавлена экспериментальная интеграция обычного Telegram аккаунта через TDLib для поиска сообщений КОМАНДА → Сигнал. Только чтение без отправки заказа; проверка на телефоне ещё требуется. Постоянная подпись сохранена." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MaxSignalCopy-0.3.9-signed-apk
-          path: MaxSignalCopy-0.3.9-signed.apk
+          name: MaxSignalCopy-0.4.0-signed-apk
+          path: MaxSignalCopy-0.4.0-signed.apk
           if-no-files-found: error
