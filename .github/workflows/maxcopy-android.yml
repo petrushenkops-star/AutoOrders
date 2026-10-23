@@ -88,11 +88,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='15' versionName='0.4.2'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='16' versionName='0.4.3'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.4.2-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.4.3-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -101,19 +101,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="max-copy-v0.4.2"
+          tag="max-copy-v0.4.3"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" MaxSignalCopy-0.4.2-signed.apk --target "$GITHUB_SHA" \
-              --title "MAX Автосигналы 0.4.2 — постоянная подпись" \
-              --notes "Скрытие всплывающего диалога сайта «Быстрый» во время автоматизации с сохранением WebView и торгового сценария. При неопределённом результате доступна ручная проверка сайта. Не проверено на реальном сайте." \
+            gh release create "$tag" MaxSignalCopy-0.4.3-signed.apk --target "$GITHUB_SHA" \
+              --title "MAX Автосигналы 0.4.3 — постоянная подпись" \
+              --notes "Сайт и все окна остаются видимыми во время заказа. После подтверждения автоматически переходим к «Заказы» с ограниченной безопасной повторной попыткой навигации. Без повторных финансовых действий. На реальном сайте пока не проверено." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MaxSignalCopy-0.4.2-signed-apk
-          path: MaxSignalCopy-0.4.2-signed.apk
+          name: MaxSignalCopy-0.4.3-signed-apk
+          path: MaxSignalCopy-0.4.3-signed.apk
           if-no-files-found: error
