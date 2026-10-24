@@ -54,6 +54,7 @@ jobs:
           node tests/overlay-smoke.js
           node tests/quick-dialog-shield-smoke.js
           node tests/weekly-search-ui-smoke.js
+          node tests/background-service-smoke.js
 
       - name: Check responsive UI layout contract
         working-directory: max-signal-copy/project
@@ -90,11 +91,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='20' versionName='0.4.7'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='21' versionName='0.4.8'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.4.7-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.4.8-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -103,19 +104,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="max-copy-v0.4.7"
+          tag="max-copy-v0.4.8"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" MaxSignalCopy-0.4.7-signed.apk --target "$GITHUB_SHA" \
-              --title "MAX Автосигналы 0.4.7 — постоянная подпись" \
-              --notes "Исправлена диагностика отказа запуска: различаются повтор кода, ожидающий сигнал и уже выполняющийся заказ. Торговый сценарий, проверка статуса и скрытие «Быстрый» неизменны. Нельзя безопасно повторить ранее отправленный код." \
+            gh release create "$tag" MaxSignalCopy-0.4.8-signed.apk --target "$GITHUB_SHA" \
+              --title "MAX Автосигналы 0.4.8 — постоянная подпись" \
+              --notes "Начатый пользователем заказ продолжается при сворачивании приложения в Android shortService foreground service (до 165 секунд). Видно системное уведомление с остановкой и возвращением в приложение. При неопределённом результате автоматического повтора нет. Недельный поиск Telegram в фоне пока не реализован; требуется проверка на устройстве." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MaxSignalCopy-0.4.7-signed-apk
-          path: MaxSignalCopy-0.4.7-signed.apk
+          name: MaxSignalCopy-0.4.8-signed-apk
+          path: MaxSignalCopy-0.4.8-signed.apk
           if-no-files-found: error
