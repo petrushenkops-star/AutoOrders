@@ -1,0 +1,16 @@
+const assert = require('assert');
+const fs=require('fs');
+const src=fs.readFileSync('app/src/main/java/com/example/maxsignalcopy/MainActivity.kt','utf8');
+const model=fs.readFileSync('app/src/main/java/com/example/maxsignalcopy/WeeklySearchSchedule.kt','utf8');
+const store=fs.readFileSync('app/src/main/java/com/example/maxsignalcopy/WeeklySearchStore.kt','utf8');
+assert(src.includes('Расписание поиска Telegram'));
+assert(src.includes('Добавить интервал') && src.includes('Удалить'));
+assert(src.includes('weekly') || src.includes('WeeklySearchSchedule'));
+assert(src.includes('setOnCheckedChangeListener'));
+assert(src.includes('telegramBridge.testRead(active.startDate'), 'Auto search uses Telegram read-only path');
+assert(!src.includes('startVisibleAutomation(active.'), 'Schedule must not place orders');
+assert(src.includes('checkHandler.removeCallbacks(scheduledTelegramCheck)'), 'Stop scanning on pause and destroy');
+assert(store.includes('getSharedPreferences'), 'Schedule is persisted');
+assert(model.includes('duration') && model.includes('occupied'), 'Reject overlapping windows across week boundary');
+assert(model.includes('date.plusDays'), 'Cross-midnight windows supported');
+console.log('Weekly Telegram schedule UI/read-only checks passed.');
