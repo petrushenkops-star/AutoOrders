@@ -1,0 +1,31 @@
+name: Export editable MAX sources
+on:
+  push:
+    branches: [max-signal-copy]
+    paths:
+      - .github/workflows/maxcopy-export.yml
+permissions:
+  contents: write
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Expand current verified 0.4.8 sources as editable files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -d max-signal-copy/project || test -z "$(ls -A max-signal-copy/project)"
+          mkdir -p max-signal-copy/project
+          base64 -d max-signal-copy/source.zip.base64 > "$RUNNER_TEMP/current-max-source.zip"
+          unzip -tq "$RUNNER_TEMP/current-max-source.zip"
+          unzip -q "$RUNNER_TEMP/current-max-source.zip" -d max-signal-copy/project
+          test -f max-signal-copy/project/app/src/main/java/com/example/maxsignalcopy/MainActivity.kt
+          test -f max-signal-copy/project/app/build.gradle.kts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add max-signal-copy/project
+          git commit -m "Export MAX 0.4.8 sources for focused maintenance"
+          git push origin HEAD:max-signal-copy
