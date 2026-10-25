@@ -47,23 +47,11 @@ class MainActivity : Activity() {
     private lateinit var browser: WebView
     private lateinit var automation: BrowserAutomation
     private lateinit var status: TextView
-    private lateinit var pendingLabel: TextView
     private lateinit var settingsView: ScrollView
     private lateinit var siteView: LinearLayout
-    private lateinit var botToken: EditText
-    private lateinit var botChatId: EditText
-    private lateinit var chat: EditText
-    private lateinit var start: EditText
-    private lateinit var end: EditText
-    private lateinit var digits: EditText
-    private lateinit var armed: CheckBox
-    private lateinit var auto: CheckBox
     private lateinit var history: TextView
-    private lateinit var maxConnection: TextView
-    private lateinit var detectedChat: TextView
-    private lateinit var lastMaxEvent: TextView
-    private lateinit var sampleText: EditText
     private lateinit var manualCode: EditText
+    private lateinit var manualDigits: EditText
     private lateinit var telegramBridge: TelegramBridge
     private lateinit var telegramState: TextView
     private lateinit var telegramApiId: EditText
@@ -90,20 +78,6 @@ class MainActivity : Activity() {
         }
     }
     private val checkHandler = Handler(Looper.getMainLooper())
-    private var maxCheckInFlight = false
-    private var polling = false
-    private var scanPaused = false
-    private val recurringCheck = object : Runnable {
-        override fun run() {
-            if (!polling) return
-            if (!scanPaused && visibleSite && SignalMailbox.settings(this@MainActivity).armed &&
-                SignalMailbox.settings(this@MainActivity).autoConfirm &&
-                MaxApiCredentials.configured(this@MainActivity) && !maxCheckInFlight) {
-                scanChatHistory(inspectionOnly = false)
-            }
-            checkHandler.postDelayed(this, 45_000L)
-        }
-    }
     private var visibleSite = false
     private var fullscreenSite = false
     private lateinit var titleView: TextView
@@ -116,9 +90,16 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         if (!TradeSession.isActive()) SignalMailbox.markInterrupted(this)
         // The new Telegram integration is read-only until explicitly tested.
-        // Disable legacy MAX automatic polling to avoid unexpected orders.
+        // Never enable the retired MAX integration or re-submit a saved code.
         val old = SignalMailbox.settings(this)
         if (old.armed || old.autoConfirm) SignalMailbox.update(this, old.copy(armed=false,autoConfirm=false))
+        if (!TradeSession.isActive()) SignalMailbox.clearPending(this)
+        // Discard credentials for the retired MAX bot; Telegram credentials are separate.
+        getSharedPreferences("max_history_bot_credentials", MODE_PRIVATE).edit().clear().apply()
+        runCatching {
+            val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            if (store.containsAlias("max_history_token_v1")) store.deleteEntry("max_history_token_v1")
+        }
         makeUi()
         telegramBridge = TelegramBridge(applicationContext) { message -> telegramState.text = message }
         automation = TradeSession.bind(this, browser)
@@ -172,7 +153,7 @@ class MainActivity : Activity() {
         }
         setContentView(root)
         if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
-        titleView = label("MAX Автосигналы · v0.4.8", true).apply {
+        titleView = label("MAX Автосигналы · v0.4.9", true).apply {
             textSize = 16f
             setPadding(dp(10), dp(2), dp(10), dp(1))
         }
@@ -183,12 +164,6 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(1), dp(10), dp(1))
         }
         root.addView(status)
-        pendingLabel = label(if (SignalMailbox.pending(this)) "Есть ожидающий код MAX" else "Ожидаем сигнал MAX").apply {
-            textSize = 12f
-            setPadding(dp(10), 0, dp(10), dp(2))
-        }
-        root.addView(pendingLabel)
-        updatePendingVisibility()
         tabsView = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         root.addView(tabsView)
         Button(this).apply {
@@ -361,68 +336,25 @@ class MainActivity : Activity() {
             }
         }
         renderWeeklySchedule()
-        settingsColumn.addView(label("--- Старый источник MAX (выключен) ---",true))
-        settingsColumn.addView(label("Поиск кодов в истории чата MAX (официальный API)", true))
-        settingsColumn.addView(label("Для доступа к истории добавьте зарегистрированного бота MAX в чат «ЛюменХ» и назначьте его администратором с правом читать все сообщения. Уведомления MAX не используются."))
-        settingsColumn.addView(label("Токен не отправляется разработчику, шифруется на этом телефоне. Не публикуйте токен в чате, GitHub или скриншотах."))
-        botToken = field("Токен бота (оставьте пустым, чтобы не менять)", "").apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        settingsColumn.addView(label("Ручной ввод кода", true))
+        settingsColumn.addView(label("Длина цифрового кода для кнопки «Выполнить». Это не влияет на Telegram."))
+        manualDigits = field("Количество цифр (4–10)", cfg.codeDigits.toString()).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
         }
-        settingsColumn.addView(botToken)
-        botChatId = field("chat_id чата ЛюменХ", MaxApiCredentials.chatId(this)).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
+        settingsColumn.addView(manualDigits)
+        addButton(settingsColumn, "Сохранить длину кода") {
+            val n = manualDigits.text.toString().trim().toIntOrNull()
+            if (n == null || n !in 4..10) {
+                Toast.makeText(this, "Укажите от 4 до 10 цифр", Toast.LENGTH_LONG).show()
+            } else {
+                val old = SignalMailbox.settings(this)
+                SignalMailbox.update(this, old.copy(codeDigits=n, armed=false, autoConfirm=false))
+                status.text = "Длина ручного кода сохранена: $n"
+                Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show()
+            }
         }
-        settingsColumn.addView(botChatId)
-        maxConnection = label("")
-        settingsColumn.addView(maxConnection)
-        addButton(settingsColumn, "Проверить историю MAX (БЕЗ заказа)") {
-            // Do not queue or trigger any financial action in inspection mode.
-            if (save(quiet = true)) scanChatHistory(inspectionOnly = true)
-        }
-        detectedChat = label("")
-        settingsColumn.addView(detectedChat)
-        chat = field("Точное название чата MAX", cfg.chatTitle)
-        settingsColumn.addView(chat)
-        settingsColumn.addView(label("Период поиска сообщений (по времени телефона). Начало = конец означает с 00:00 сегодня. Код для заказа должен быть не старше пяти минут."))
-        start = field("Начало HH:mm", cfg.windowStart)
-        end = field("Окончание HH:mm", cfg.windowEnd)
-        settingsColumn.addView(start)
-        settingsColumn.addView(end)
-        digits = field("Количество цифр в коде", cfg.codeDigits.toString())
-        digits.inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        settingsColumn.addView(digits)
-        armed = CheckBox(this).apply {
-            text = "Искать коды в истории выбранного чата MAX"
-            isChecked = cfg.armed
-        }
-        settingsColumn.addView(armed)
-        auto = CheckBox(this).apply {
-            text = "После кода автоматически оформить заказ (только с открытым приложением и сайтом)"
-            isChecked = cfg.autoConfirm
-        }
-        settingsColumn.addView(auto)
-        settingsColumn.addView(label("Важно: автоматическое подтверждение может привести к реальной финансовой операции. При неизвестном результате повтор не выполняется."))
-        addButton(settingsColumn, "Сохранить настройки MAX") { save() }
-        settingsColumn.addView(label("Безопасная проверка распознавания: вставьте пример сообщения MAX. Проверка НЕ отправляет заказ и НЕ сохраняет код."))
-        sampleText = field("Текст сообщения с тестовым кодом", "")
-        settingsColumn.addView(sampleText)
-        addButton(settingsColumn, "Проверить распознавание (без заказа)") {
-            val n = digits.text.toString().toIntOrNull() ?: -1
-            val parsed = SignalPolicy.extractCode(sampleText.text.toString(), n)
-            status.text = if (parsed != null) "Проверка успешна: найден один код из $n цифр. Заказ не отправлялся." else
-                "Проверка: код не распознан или найдено несколько разных кодов. Заказ не отправлялся."
-        }
-        lastMaxEvent = label("")
-        settingsColumn.addView(lastMaxEvent)
-        addButton(settingsColumn, "Отклонить ожидающий код") {
-            SignalMailbox.clearPending(this)
-            pendingLabel.text = "Ожидаем сигнал MAX"
-        }
-        addButton(settingsColumn, "Проверить ожидающий код вручную") {
-            showSite()
-            processPending(explicit = true)
-        }
-        settingsColumn.addView(label("История операций", true))
+        settingsColumn.addView(label("Заказ выполняется по введённому вручную коду. Если результат неизвестен, повторная отправка запрещена."))
+                settingsColumn.addView(label("История операций", true))
         history = label(SignalMailbox.history(this))
         settingsColumn.addView(history)
 
@@ -449,7 +381,6 @@ class MainActivity : Activity() {
                 }
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (::automation.isInitialized) automation.onPageFinished(url.orEmpty())
-                    if (visibleSite) processPending(explicit = false)
                 }
             }
         }
@@ -508,15 +439,14 @@ class MainActivity : Activity() {
                 websiteActionBar.addView(this, LinearLayout.LayoutParams(0, dp(44), 1f))
             }
         }
-        bottomButton("MAX: поиск/пуск") {
-            if (SignalMailbox.pending(this)) processPending(explicit = true)
-            else scanChatHistory(inspectionOnly = false)
+        bottomButton("Главная") {
+            if (automation.isActive()) status.text = "Дождитесь завершения заказа."
+            else openSite()
         }
         bottomButton("Весь экран") { setSiteFullscreen(true) }
         bottomButton("СТОП") {
-            scanPaused = true
-            automation.stop()
-            status.text = "Остановлено. Для возобновления нажмите «Сохранить настройки»."
+            TradeSession.stop()
+            status.text = "Остановка запрошена. Проверьте результат в разделе «Заказы»."
         }
     }
 
@@ -582,15 +512,6 @@ class MainActivity : Activity() {
         telegramBridge.testRead(active.startDate, active.window.start.toString(), active.window.end.toString(), n)
     }
 
-    private fun updatePendingVisibility() {
-        if (::pendingLabel.isInitialized) {
-            pendingLabel.visibility = if (!fullscreenSite &&
-                (SignalMailbox.settings(this).armed || SignalMailbox.pending(this))) {
-                View.VISIBLE
-            } else View.GONE
-        }
-    }
-
     private fun setSiteFullscreen(enabled: Boolean) {
         fullscreenSite = enabled && visibleSite
         val normal = if (fullscreenSite) View.GONE else View.VISIBLE
@@ -600,7 +521,6 @@ class MainActivity : Activity() {
         manualBar.visibility = normal
         websiteActionBar.visibility = normal
         fullscreenToolbar.visibility = if (fullscreenSite) View.VISIBLE else View.GONE
-        updatePendingVisibility()
     }
 
     private fun startVisibleAutomation(code: String) {
@@ -619,15 +539,11 @@ class MainActivity : Activity() {
 
     fun onTradeFinished(message: String) {
         if (::status.isInitialized) status.text = message
-        if (::pendingLabel.isInitialized) {
-            pendingLabel.text = if (SignalMailbox.pending(this)) "Есть ожидающий код MAX" else "Ожидаем сигнал MAX"
-            updatePendingVisibility()
-        }
         if (::history.isInitialized) history.text = SignalMailbox.history(this)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    /** Deliberate one-shot manual trigger; no MAX permission, fixed schedule or chat title required. */
+    /** One-shot manual code; Telegram search remains read-only. */
     private fun runManualCode() {
         if (!visibleSite || automation.isActive()) {
             status.text = "Дождитесь окончания текущего заказа."
@@ -657,89 +573,6 @@ class MainActivity : Activity() {
         startVisibleAutomation(claim.code)
     }
 
-    private fun save(quiet: Boolean = false): Boolean {
-        val settings = SignalSettings(
-            chatTitle = chat.text.toString().trim(),
-            windowStart = start.text.toString().trim(),
-            windowEnd = end.text.toString().trim(),
-            codeDigits = digits.text.toString().toIntOrNull() ?: -1,
-            armed = armed.isChecked,
-            autoConfirm = auto.isChecked
-        )
-        if (!SignalPolicy.valid(settings)) {
-            Toast.makeText(this, "Проверьте время HH:mm, чат и длину кода 4–10.", Toast.LENGTH_LONG).show()
-            return false
-        }
-        try {
-            val chatId = botChatId.text.toString().trim()
-            if (chatId.isNotBlank()) {
-                MaxApiCredentials.update(this, chatId, botToken.text.toString().trim())
-                botToken.text.clear()
-            } else if (botToken.text.isNotBlank()) {
-                Toast.makeText(this, "Для токена требуется chat_id.", Toast.LENGTH_LONG).show()
-                return false
-            }
-        } catch (_: Exception) {
-            Toast.makeText(this, "Не удалось зашифровать токен или сохранить chat_id.", Toast.LENGTH_LONG).show()
-            return false
-        }
-        SignalMailbox.update(this, settings)
-        scanPaused = false
-        updatePendingVisibility()
-        if (!quiet) {
-            status.text = "Настройки истории MAX сохранены. Откройте вкладку «Сайт»."
-            Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show()
-        }
-        updateMaxDiagnostics()
-        return true
-    }
-
-    private fun scanChatHistory(inspectionOnly: Boolean) {
-        if (maxCheckInFlight || (!inspectionOnly && (scanPaused || (::automation.isInitialized && automation.isActive())))) return
-        // A manual inspection never creates a pending code or runs an order.
-        val cfg = SignalMailbox.settings(this)
-        if (!MaxApiCredentials.configured(this)) {
-            maxConnection.text = "Для проверки укажите chat_id и токен бота MAX."
-            return
-        }
-        maxCheckInFlight = true
-        maxConnection.text = "MAX: проверяется история сообщений…"
-        val now = System.currentTimeMillis()
-        Thread {
-            val result = MaxHistoryClient.read(applicationContext, cfg, now)
-            runOnUiThread {
-                maxCheckInFlight = false
-                maxConnection.text = result.message
-                if (!inspectionOnly && !scanPaused && result.choice is HistoryChoice.Found && cfg.armed) {
-                    val found = result.choice
-                    if (SignalMailbox.offerFromHistory(this, found.code, found.postedMillis)) {
-                        pendingLabel.text = "Код из истории ЛюменХ готов к выполнению"
-                        if (cfg.autoConfirm && visibleSite) processPending(explicit = false)
-                    } else {
-                        maxConnection.text = "MAX: код уже принят/использован или идёт другая операция."
-                    }
-                }
-            }
-        }.start()
-    }
-
-    private fun updateMaxDiagnostics() {
-        if (::maxConnection.isInitialized && !maxCheckInFlight &&
-            (maxConnection.text.isBlank() || !MaxApiCredentials.configured(this))) {
-            maxConnection.text = if (MaxApiCredentials.configured(this))
-                "API MAX настроен. Чат проверяется отдельной кнопкой; уведомления не используются."
-            else "MAX API не настроен: нужны chat_id и токен бота с правами администратора."
-        }
-        if (::detectedChat.isInitialized) {
-            detectedChat.text = "Источник: история чата «${SignalMailbox.settings(this).chatTitle}»"
-        }
-        if (::lastMaxEvent.isInitialized) lastMaxEvent.text = SignalMailbox.lastEvent(this)
-        if (::pendingLabel.isInitialized) {
-            pendingLabel.text = if (SignalMailbox.pending(this)) "Есть ожидающий код MAX" else "Ожидаем сигнал MAX"
-            updatePendingVisibility()
-        }
-    }
-
     private fun showSettings() {
         visibleSite = false
         setSiteFullscreen(false)
@@ -753,58 +586,23 @@ class MainActivity : Activity() {
         setSiteFullscreen(false)
         settingsView.visibility = View.GONE
         siteView.visibility = View.VISIBLE
-        if (SignalMailbox.settings(this).autoConfirm && SignalMailbox.settings(this).armed) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-        processPending(explicit = false)
-        if (!scanPaused && SignalMailbox.settings(this).autoConfirm && SignalMailbox.settings(this).armed)
-            scanChatHistory(inspectionOnly = false)
     }
 
-    private fun openSite() { browser.loadUrl("https://lumecoe.com/ru") }
-
-    private fun processPending(explicit: Boolean) {
-        if (!visibleSite || !::automation.isInitialized || automation.isActive()) return
-        val cfg = SignalMailbox.settings(this)
-        if (!cfg.armed || (!explicit && !cfg.autoConfirm)) return
-        if (!SignalMailbox.pending(this)) return
-        val url = Uri.parse(browser.url.orEmpty())
-        if (url.scheme != "https" || (url.host != "lumecoe.com" && !url.host.orEmpty().endsWith(".lumecoe.com"))) {
-            status.text = "Сначала войдите в личный кабинет на сайте."
-            return
-        }
-        val claim = SignalMailbox.claim(this) ?: return
-        pendingLabel.text = "Сигнал принят в работу (повтор заблокирован)"
-        startVisibleAutomation(claim.code)
-    }
+        private fun openSite() { browser.loadUrl("https://lumecoe.com/ru") }
 
     override fun onResume() {
         super.onResume()
         TradeSession.attach(this)
-        SignalMailbox.onSignal = {
-            updateMaxDiagnostics()
-            processPending(explicit = false)
-        }
-        updateMaxDiagnostics()
-        if (::automation.isInitialized) processPending(explicit = false)
-        polling = true
-        checkHandler.removeCallbacks(recurringCheck)
-        checkHandler.post(recurringCheck)
         checkHandler.removeCallbacks(scheduledTelegramCheck)
         checkHandler.post(scheduledTelegramCheck)
     }
 
     override fun onPause() {
-        // Stop scheduled Telegram/MAX polling when hidden; the foreground service
-        // independently keeps an already-claimed WebView order running.
-        polling = false
-        checkHandler.removeCallbacks(recurringCheck)
         checkHandler.removeCallbacks(scheduledTelegramCheck)
-        SignalMailbox.onSignal = null
         super.onPause()
     }
 
-    @Deprecated("Use onBackInvokedDispatcher for target Android versions when migrating UI")
+        @Deprecated("Use onBackInvokedDispatcher for target Android versions when migrating UI")
     override fun onBackPressed() {
         if (fullscreenSite) {
             setSiteFullscreen(false)
@@ -818,8 +616,6 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        polling = false
-        checkHandler.removeCallbacks(recurringCheck)
         checkHandler.removeCallbacks(scheduledTelegramCheck)
         // Closing/recreating an Activity is not a request to cancel an active order.
         // Do not destroy its WebView: the explicit foreground service owns the run.

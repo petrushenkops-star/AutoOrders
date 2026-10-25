@@ -36,21 +36,20 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Expand independent MAX app sources
+      - name: Use editable Android sources
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p max-signal-copy/project
-          base64 --decode max-signal-copy/source.zip.base64 > "$RUNNER_TEMP/max-source.zip"
-          unzip -tq "$RUNNER_TEMP/max-source.zip"
-          unzip -q "$RUNNER_TEMP/max-source.zip" -d max-signal-copy/project
           test -f max-signal-copy/project/app/build.gradle.kts
+          test -f max-signal-copy/project/app/src/main/java/com/example/maxsignalcopy/MainActivity.kt
+          echo "Building version-controlled Android source files"
 
       - name: Offline browser driver tests
         working-directory: max-signal-copy/project
         run: |
           node tests/driver-smoke.js
           node tests/ui-layout-smoke.js
+          node tests/cleanup-smoke.js
           node tests/overlay-smoke.js
           node tests/quick-dialog-shield-smoke.js
           node tests/weekly-search-ui-smoke.js
@@ -91,11 +90,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='21' versionName='0.4.8'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='22' versionName='0.4.9'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.4.8-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.4.9-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -104,19 +103,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="max-copy-v0.4.8"
+          tag="max-copy-v0.4.9"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" MaxSignalCopy-0.4.8-signed.apk --target "$GITHUB_SHA" \
-              --title "MAX Автосигналы 0.4.8 — постоянная подпись" \
-              --notes "Начатый пользователем заказ продолжается при сворачивании приложения в Android shortService foreground service (до 165 секунд). Видно системное уведомление с остановкой и возвращением в приложение. При неопределённом результате автоматического повтора нет. Недельный поиск Telegram в фоне пока не реализован; требуется проверка на устройстве." \
+            gh release create "$tag" MaxSignalCopy-0.4.9-signed.apk --target "$GITHUB_SHA" \
+              --title "MAX Автосигналы 0.4.9 — постоянная подпись" \
+              --notes "Оставлено только одно итоговое уведомление после подтверждения статуса «В ожидании». Удалён устаревший MAX-бот из настроек и ручных элементов управления; сохранены Telegram, недельное расписание, работающий WebView и защита от повторных заказов. Фоновое служебное уведомление показывается только во время выполняющегося заказа. На телефоне требуется проверка." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MaxSignalCopy-0.4.8-signed-apk
-          path: MaxSignalCopy-0.4.8-signed.apk
+          name: MaxSignalCopy-0.4.9-signed-apk
+          path: MaxSignalCopy-0.4.9-signed.apk
           if-no-files-found: error

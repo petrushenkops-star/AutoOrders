@@ -48,6 +48,8 @@ object OrderPendingNotifier {
             .setCategory(Notification.CATEGORY_STATUS)
             .build()
 
+        // Ensure the temporary trade-progress card cannot remain beside this result.
+        manager.cancel(801)
         // Keep each verified pending order visible as a distinct notification.
         val notificationId = (System.currentTimeMillis() and 0x7FFFFFFFL).toInt()
         manager.notify(notificationId, notification)

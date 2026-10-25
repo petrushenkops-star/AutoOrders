@@ -12,17 +12,18 @@ assert(src.includes('ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f'), 'Browser fill
 assert(src.includes('manualBar.addView(manualCode'), 'Manual code is in compact row');
 assert(src.includes('minWidth = 0'), 'Compact bottom buttons allowed to shrink');
 assert(gradle.includes('applicationId = "com.example.maxsignalcopy"'));
-assert(gradle.includes('versionCode = 21') && gradle.includes('versionName = "0.4.8"'));
+assert(gradle.includes('versionCode = 22') && gradle.includes('versionName = "0.4.9"'));
 console.log('UI smoke checks passed.');
 
-// API chat history is the only signal source; no notification reading permission.
+// The old MAX bot settings and activation UI must not return.
 const manifest = fs.readFileSync('app/src/main/AndroidManifest.xml','utf8');
-const api = fs.readFileSync('app/src/main/java/com/example/maxsignalcopy/MaxHistoryClient.kt','utf8');
-const mailbox = fs.readFileSync('app/src/main/java/com/example/maxsignalcopy/SignalMailbox.kt','utf8');
-assert(!manifest.includes('BIND_NOTIFICATION_LISTENER_SERVICE'), 'No notification listener enabled');
-assert(api.includes('platform-api2.max.ru') && api.includes('/messages?chat_id='), 'Official MAX history API used');
-assert(api.includes('/chats/$id'), 'Verify chosen chat title with API');
-assert(src.includes('Проверить историю MAX (БЕЗ заказа)'), 'Safe inspection mode');
-assert(src.includes('MaxApiCredentials.update'), 'Token and chat configuration');
-assert(mailbox.includes('offerFromHistory'), 'History code links into existing order flow');
+assert(!manifest.includes('BIND_NOTIFICATION_LISTENER_SERVICE'));
+assert(!src.includes('Проверить историю MAX'));
+assert(!src.includes('chat_id чата ЛюменХ'));
+assert(!src.includes('MAX: поиск/пуск'));
+assert(!src.includes('MaxApiCredentials'));
+assert(src.includes('Ручной ввод кода') && src.includes('Сохранить длину кода'));
+assert(src.includes('Расписание поиска Telegram'));
+assert(src.includes('TradeSession.start(') && src.includes('WebViewCompat.addDocumentStartJavaScript'));
+console.log('Clean settings and manual trading smoke checks passed.');
 console.log('MAX history integration smoke checks passed.');

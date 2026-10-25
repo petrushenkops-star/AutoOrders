@@ -91,11 +91,12 @@ object TradeSession {
         val context = app ?: return
         running = false
         SignalMailbox.finish(context, result, detail, safeToRetry)
+        // Stop the temporary foreground notification before publishing the verified result.
+        TradeForegroundService.finish(context)
         if (OrderPendingNotificationPolicy.shouldNotify(result)) {
             val posted = OrderPendingNotifier.show(context)
             lastStatus = if (posted) "Заказ в ожидании" else "Заказ в ожидании. Разрешите уведомления Android."
         } else lastStatus = detail
         listener?.get()?.onTradeFinished(lastStatus)
-        TradeForegroundService.finish(context)
     }
 }

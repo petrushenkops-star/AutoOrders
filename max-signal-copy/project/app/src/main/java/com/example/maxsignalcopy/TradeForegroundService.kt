@@ -77,6 +77,10 @@ class TradeForegroundService : Service() {
         if (TradeSession.isActive()) TradeSession.onServiceTimeout()
         if (wakeLock?.isHeld == true) wakeLock?.release()
         wakeLock = null
+        // Remove the mandatory in-progress notification when the order ends.
+        if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
+        else @Suppress("DEPRECATION") stopForeground(true)
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION)
         super.onDestroy()
     }
 
@@ -110,7 +114,11 @@ class TradeForegroundService : Service() {
             val i = Intent(context, TradeForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(i) else context.startService(i)
         }
-        fun finish(context: Context) = context.stopService(Intent(context, TradeForegroundService::class.java))
+        fun finish(context: Context) {
+            context.stopService(Intent(context, TradeForegroundService::class.java))
+            // stopService may finish asynchronously; cancel its obsolete progress card now.
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION)
+        }
         fun update(context: Context, value: String) {
             // Send only order stage, never the dynamic code or personal site data.
             try {
