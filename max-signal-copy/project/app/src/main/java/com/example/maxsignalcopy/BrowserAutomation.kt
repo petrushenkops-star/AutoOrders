@@ -1,7 +1,6 @@
 package com.example.maxsignalcopy
 
-import android.os.Handler
-import android.os.Looper
+import android.os.SystemClock
 import android.webkit.WebView
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -12,7 +11,10 @@ class BrowserAutomation(
     private val status: (String) -> Unit,
     private val finished: (String, String, Boolean) -> Unit,
 ) {
-    private val handler = Handler(Looper.getMainLooper())
+    // Foreground service owns the ticker, independently of Activity.onPause.
+    private var awaitingJs = false
+    private var jsStartedAt = 0L
+    private val jsResponseTimeoutMs = 15_000L
     private var active = false
     private var stage = ""
     private var code = ""
@@ -48,6 +50,12 @@ class BrowserAutomation(
     }
 
     fun isActive() = active
+    fun stageName() = stage.ifBlank { "IDLE" }
+
+    fun rendererLost() {
+        if (active) finish(if (uncertain) "НЕИЗВЕСТНО" else "ОШИБКА",
+            "WebView остановлен Android. Проверьте «Заказы». Повтор не запускается.")
+    }
 
     fun start(dynamicCode: String) {
         require(dynamicCode.all { it in '0'..'9' } && dynamicCode.length in 4..10)
@@ -67,7 +75,7 @@ class BrowserAutomation(
         lastStage = ""
         stageTicks = 0
         reloadHome("NAVIGATE_TRADE", "Открываю главную страницу перед оформлением заказа")
-        step()
+        // First and following steps run from the service heartbeat.
     }
 
     fun stop() {
@@ -83,8 +91,16 @@ class BrowserAutomation(
         return uri.scheme == "https" && (host == "lumecoe.com" || host.endsWith(".lumecoe.com"))
     }
 
-    private fun step() {
+    /** Service-driven single-flight execution on WebView's owning UI thread. */
+    fun pulse() {
         if (!active) return
+        if (awaitingJs) {
+            if (SystemClock.elapsedRealtime() - jsStartedAt >= jsResponseTimeoutMs) {
+                finish(if (uncertain) "НЕИЗВЕСТНО" else "ОШИБКА",
+                    "WebView не ответил за 15 секунд. Проверьте заказ вручную; повтора нет.")
+            }
+            return
+        }
         if (!safeUrl(browser.url.orEmpty())) {
             finish(if (uncertain) "НЕИЗВЕСТНО" else "ОШИБКА", "Сайт изменил адрес. Дальнейшие действия остановлены.")
             return
@@ -97,7 +113,6 @@ class BrowserAutomation(
         stageTicks++
         if (stage == "WAIT_SITE_HOME") {
             if (!homeLoaded) {
-                handler.postDelayed({ step() }, 850)
                 return
             }
             loadingHome = false
@@ -115,7 +130,6 @@ class BrowserAutomation(
             }
             orderListRecoveryUsed = true
             reloadHome("NAVIGATE_ORDERS", "Раздел «Заказы» не открылся. Возвращаюсь на главную для повторного перехода")
-            handler.postDelayed({ step() }, 850)
             return
         }
         if (stage == "SUBMIT_CODE" || stage == "CONFIRM") uncertain = true
@@ -123,8 +137,12 @@ class BrowserAutomation(
             .replace("__CODE__", JSONObject.quote(code))
             .replace("__AMOUNT__", JSONObject.quote(orderAmount))
             .replace("__STAGE_TICKS__", stageTicks.toString())
-        browser.evaluateJavascript(js) { raw ->
-            if (!active) return@evaluateJavascript
+        awaitingJs = true
+        jsStartedAt = SystemClock.elapsedRealtime()
+        try {
+            browser.evaluateJavascript(js) { raw ->
+                awaitingJs = false
+                if (!active) return@evaluateJavascript
             val result = try {
                 JSONObject(JSONTokener(raw).nextValue() as String)
             } catch (_: Exception) {
@@ -154,7 +172,6 @@ class BrowserAutomation(
                         // The current nested copy screen may not display Orders tab.
                         // Reload Home only AFTER the success message for this run.
                         reloadHome("NAVIGATE_ORDERS", "Заказ создан. Открываю главную для проверки статуса")
-                        handler.postDelayed({ step() }, 850)
                         return@evaluateJavascript
                     }
                     stage = next
@@ -197,12 +214,17 @@ class BrowserAutomation(
                     return@evaluateJavascript
                 }
             }
-            handler.postDelayed({ step() }, 850)
+            }
+        } catch (_: Exception) {
+            awaitingJs = false
+            finish(if (uncertain) "НЕИЗВЕСТНО" else "ОШИБКА",
+                "Не удалось выполнить шаг WebView. Проверьте заказ вручную.")
         }
     }
 
     private fun finish(result: String, detail: String) {
         active = false
+        awaitingJs = false
         stage = ""
         code = ""
         orderAmount = ""
@@ -213,7 +235,6 @@ class BrowserAutomation(
         // retry with the same manually entered code after fixing navigation.
         val safeToRetry = !uncertain && result in setOf("ОШИБКА", "ОСТАНОВЛЕНО")
         uncertain = false
-        handler.removeCallbacksAndMessages(null)
         status(detail)
         finished(result, detail, safeToRetry)
     }

@@ -54,9 +54,31 @@ object TradeSession {
             return false
         }
         running = true
+        app?.let { BackgroundRunTrace.note(it, "Начат заказ, служба активна") }
         engine!!.start(code)
         // The engine can fail synchronously if the web session has expired.
         return true
+    }
+
+    /** Called by the foreground service, not by the Activity timer. */
+    fun pulse() { if (running) engine?.pulse() }
+
+    fun stageForDiagnostics() = engine?.stageName().orEmpty().ifBlank { "Нет заказа" }
+
+    fun pageFinished(url: String) { engine?.onPageFinished(url) }
+
+    fun activityBackgrounded() {
+        if (isActive()) app?.let { BackgroundRunTrace.note(it, "Свернуто, этап: ${stageForDiagnostics()}") }
+    }
+
+    fun activityForegrounded() {
+        if (isActive()) app?.let { BackgroundRunTrace.note(it, "Открыто, этап: ${stageForDiagnostics()}") }
+    }
+
+    fun rendererGone() {
+        app?.let { BackgroundRunTrace.note(it, "Сбой WebView. Автоматический повтор запрещён") }
+        engine?.rendererLost()
+        web = null
     }
 
     fun stop() { engine?.stop() }
@@ -91,6 +113,7 @@ object TradeSession {
         val context = app ?: return
         running = false
         SignalMailbox.finish(context, result, detail, safeToRetry)
+        BackgroundRunTrace.note(context, "Завершено: $result")
         // Stop the temporary foreground notification before publishing the verified result.
         TradeForegroundService.finish(context)
         if (OrderPendingNotificationPolicy.shouldNotify(result)) {

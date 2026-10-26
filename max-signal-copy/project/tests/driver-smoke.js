@@ -174,7 +174,7 @@ assert(kotlinController.includes('orderListRecoveryUsed = true'));
 assert(kotlinController.includes('if (next == "NAVIGATE_ORDERS" && stage == "WAIT_RESULT")'));
 assert(kotlinController.includes('if (stage == "SUBMIT_CODE" || stage == "CONFIRM") uncertain = true'));
 const kotlinActivity=fs.readFileSync('app/src/main/java/com/example/maxsignalcopy/MainActivity.kt','utf8');
-assert(kotlinActivity.includes('automation.onPageFinished(url.orEmpty())'));
+assert(kotlinActivity.includes('TradeSession.pageFinished(url.orEmpty())'));
 console.log('driver-smoke: auto-home navigation from nested pages and safe Orders retry passed');
 
 // 0.4.3: click on Orders can be lost during Vue/Vant SPA re-render.

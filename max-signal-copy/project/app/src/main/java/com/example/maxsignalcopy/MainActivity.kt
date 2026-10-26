@@ -17,6 +17,7 @@ import android.view.WindowInsets
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -50,6 +51,7 @@ class MainActivity : Activity() {
     private lateinit var settingsView: ScrollView
     private lateinit var siteView: LinearLayout
     private lateinit var history: TextView
+    private lateinit var backgroundTrace: TextView
     private lateinit var manualCode: EditText
     private lateinit var manualDigits: EditText
     private lateinit var telegramBridge: TelegramBridge
@@ -357,12 +359,19 @@ class MainActivity : Activity() {
                 settingsColumn.addView(label("История операций", true))
         history = label(SignalMailbox.history(this))
         settingsColumn.addView(history)
+        settingsColumn.addView(label("Диагностика фоновой автоматизации", true))
+        backgroundTrace = label(BackgroundRunTrace.read(this))
+        settingsColumn.addView(backgroundTrace)
+        addButton(settingsColumn, "Обновить диагностику") {
+            backgroundTrace.text = BackgroundRunTrace.read(this)
+        }
 
         siteView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
         root.addView(siteView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         val (siteBrowser, reusingActiveBrowser) = TradeSession.browser(this)
         browser = siteBrowser.apply {
             settings.javaScriptEnabled = true // Site SPA and DOM driver require JavaScript.
+            if (Build.VERSION.SDK_INT >= 26) setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
             settings.domStorageEnabled = true
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.setSupportMultipleWindows(false)
@@ -380,7 +389,14 @@ class MainActivity : Activity() {
                     if (req?.isForMainFrame == true) status.text = "Сайт недоступен. Проверьте соединение."
                 }
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    if (::automation.isInitialized) automation.onPageFinished(url.orEmpty())
+                    TradeSession.pageFinished(url.orEmpty())
+                }
+                override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                    TradeSession.rendererGone()
+                    (view?.parent as? ViewGroup)?.removeView(view)
+                    view?.destroy()
+                    status.text = "WebView остановлен Android. Проверьте «Заказы» и перезапустите приложение."
+                    return true
                 }
             }
         }
@@ -593,11 +609,16 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         TradeSession.attach(this)
+        TradeSession.activityForegrounded()
+        if (::backgroundTrace.isInitialized) backgroundTrace.text = BackgroundRunTrace.read(this)
         checkHandler.removeCallbacks(scheduledTelegramCheck)
         checkHandler.post(scheduledTelegramCheck)
     }
 
     override fun onPause() {
+        // Minimize must not cancel an already-started transaction.
+        TradeSession.activityBackgrounded()
+        if (::browser.isInitialized && TradeSession.isActive()) browser.resumeTimers()
         checkHandler.removeCallbacks(scheduledTelegramCheck)
         super.onPause()
     }

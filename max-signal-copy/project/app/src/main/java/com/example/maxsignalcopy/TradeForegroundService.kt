@@ -24,10 +24,15 @@ class TradeForegroundService : Service() {
         if (TradeSession.isActive()) TradeSession.onServiceTimeout()
         stopSelf()
     }
-    private val check = object : Runnable {
+    // WebView calls are always made on the main thread. One pulse at a time.
+    private val stepHeartbeat = object : Runnable {
         override fun run() {
-            if (!TradeSession.isActive()) stopSelf()
-            else handler.postDelayed(this, 4_000L)
+            if (!TradeSession.isActive()) {
+                stopSelf()
+                return
+            }
+            TradeSession.pulse()
+            handler.postDelayed(this, 850L)
         }
     }
 
@@ -45,7 +50,7 @@ class TradeForegroundService : Service() {
         val manager = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = manager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MaxSignalCopy:ActiveOrder")
         wakeLock?.acquire(165_000L)
-        handler.postDelayed(check, 4_000L)
+        handler.postDelayed(stepHeartbeat, 850L)
         handler.postDelayed(deadline, 165_000L)
     }
 
