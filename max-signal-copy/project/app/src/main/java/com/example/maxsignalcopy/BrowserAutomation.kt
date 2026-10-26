@@ -17,6 +17,7 @@ class BrowserAutomation(
     private val jsResponseTimeoutMs = 15_000L
     private var active = false
     private var stage = ""
+    private var completedStage = ""
     private var code = ""
     private var ticks = 0
     private var uncertain = false
@@ -51,6 +52,7 @@ class BrowserAutomation(
 
     fun isActive() = active
     fun stageName() = stage.ifBlank { "IDLE" }
+    fun finishedStage() = completedStage.ifBlank { "IDLE" }
 
     fun rendererLost() {
         if (active) finish(if (uncertain) "НЕИЗВЕСТНО" else "ОШИБКА",
@@ -225,6 +227,7 @@ class BrowserAutomation(
     private fun finish(result: String, detail: String) {
         active = false
         awaitingJs = false
+        completedStage = stage
         stage = ""
         code = ""
         orderAmount = ""

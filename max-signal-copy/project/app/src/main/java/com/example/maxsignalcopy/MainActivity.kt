@@ -2,6 +2,10 @@ package com.example.maxsignalcopy
 
 import android.Manifest
 import android.app.Activity
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
+import android.content.pm.PackageManager
+import android.util.Rational
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.app.NotificationManager
@@ -155,7 +159,7 @@ class MainActivity : Activity() {
         }
         setContentView(root)
         if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
-        titleView = label("MAX Автосигналы · v0.4.9", true).apply {
+        titleView = label("MAX Автосигналы · v0.5.1", true).apply {
             textSize = 16f
             setPadding(dp(10), dp(2), dp(10), dp(1))
         }
@@ -359,6 +363,17 @@ class MainActivity : Activity() {
                 settingsColumn.addView(label("История операций", true))
         history = label(SignalMailbox.history(this))
         settingsColumn.addView(history)
+        settingsColumn.addView(label("Фоновая работа сайта", true))
+        settingsColumn.addView(label("При сворачивании во время заказа сохранять WebView в маленьком плавающем окне Android. Это позволяет работать в других приложениях; экран блокировать нельзя."))
+        val miniWindowPref = getSharedPreferences("trade_minipip_v1", MODE_PRIVATE)
+        settingsColumn.addView(CheckBox(this).apply {
+            text = "Мини-окно при сворачивании активного заказа"
+            isChecked = miniWindowPref.getBoolean("enabled", true)
+            setOnCheckedChangeListener { _, checked ->
+                miniWindowPref.edit().putBoolean("enabled", checked).apply()
+                refreshPictureInPicturePolicy()
+            }
+        })
         settingsColumn.addView(label("Диагностика фоновой автоматизации", true))
         backgroundTrace = label(BackgroundRunTrace.read(this))
         settingsColumn.addView(backgroundTrace)
@@ -546,6 +561,8 @@ class MainActivity : Activity() {
             SignalMailbox.finish(this, "ОШИБКА", "Не удалось запустить защищённый фоновый режим", true)
             status.text = "Не удалось запустить фоновую службу. Заказ не начинался."
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            refreshPictureInPicturePolicy()
         }
     }
 
@@ -556,6 +573,7 @@ class MainActivity : Activity() {
     fun onTradeFinished(message: String) {
         if (::status.isInitialized) status.text = message
         if (::history.isInitialized) history.text = SignalMailbox.history(this)
+        refreshPictureInPicturePolicy()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -590,6 +608,10 @@ class MainActivity : Activity() {
     }
 
     private fun showSettings() {
+        if (TradeSession.isActive()) {
+            status.text = "Во время заказа сайт должен оставаться открытым. Настройки доступны после завершения."
+            return
+        }
         visibleSite = false
         setSiteFullscreen(false)
         settingsView.visibility = View.VISIBLE
@@ -606,9 +628,61 @@ class MainActivity : Activity() {
 
         private fun openSite() { browser.loadUrl("https://lumecoe.com/ru") }
 
+    private fun shouldKeepVisibleForTrade(): Boolean {
+        if (Build.VERSION.SDK_INT < 26 || !TradeSession.isActive() || !visibleSite) return false
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
+        return getSharedPreferences("trade_minipip_v1", MODE_PRIVATE).getBoolean("enabled", true)
+    }
+
+    private fun pictureInPictureParameters(autoEnter: Boolean): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(9, 16))
+        if (Build.VERSION.SDK_INT >= 31) builder.setAutoEnterEnabled(autoEnter)
+        return builder.build()
+    }
+
+    private fun refreshPictureInPicturePolicy() {
+        if (Build.VERSION.SDK_INT < 26 || !packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
+        // Android 12+ enters the mini-window on Home/gesture without destroying
+        // the Activity. The FGS still owns the order step loop.
+        runCatching {
+            setPictureInPictureParams(pictureInPictureParameters(shouldKeepVisibleForTrade()))
+        }.onFailure {
+            BackgroundRunTrace.note(this, "Не удалось включить мини-окно: ${it.javaClass.simpleName}")
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        // Older Android versions do not support autoEnterEnabled.
+        if (Build.VERSION.SDK_INT in 26..30 && shouldKeepVisibleForTrade()) {
+            runCatching {
+                enterPictureInPictureMode(pictureInPictureParameters(false))
+            }.onSuccess { entered ->
+                BackgroundRunTrace.note(this, if (entered) "Мини-окно запущено" else "Android отказал во входе в мини-окно")
+            }.onFailure {
+                BackgroundRunTrace.note(this, "Ошибка мини-окна: ${it.javaClass.simpleName}")
+            }
+        }
+        super.onUserLeaveHint()
+    }
+
+    override fun onPictureInPictureModeChanged(inPictureInPictureMode: Boolean, configuration: Configuration) {
+        super.onPictureInPictureModeChanged(inPictureInPictureMode, configuration)
+        if (inPictureInPictureMode) {
+            // Keep the REAL WebView laid out and visible, not an opaque status screen.
+            setSiteFullscreen(true)
+            fullscreenToolbar.visibility = View.GONE
+            BackgroundRunTrace.note(this, "Мини-окно активно, этап: ${TradeSession.stageForDiagnostics()}")
+        } else {
+            setSiteFullscreen(false)
+            BackgroundRunTrace.note(this, "Выход из мини-окна, этап: ${TradeSession.stageForDiagnostics()}")
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         TradeSession.attach(this)
+        refreshPictureInPicturePolicy()
         TradeSession.activityForegrounded()
         if (::backgroundTrace.isInitialized) backgroundTrace.text = BackgroundRunTrace.read(this)
         checkHandler.removeCallbacks(scheduledTelegramCheck)

@@ -113,7 +113,16 @@ object TradeSession {
         val context = app ?: return
         running = false
         SignalMailbox.finish(context, result, detail, safeToRetry)
-        BackgroundRunTrace.note(context, "Завершено: $result")
+        val finalStage = engine?.finishedStage().orEmpty().ifBlank { "неизвестен" }
+        // Detail may include the financial amount, so keep only a reason category.
+        val reason = when {
+            detail.contains("раздел «Заказы»", ignoreCase = true) -> "не открылись Заказы"
+            detail.contains("WebView", ignoreCase = true) -> "WebView не ответил"
+            detail.contains("Превышено время") -> "истекло ожидание"
+            detail.contains("Остановлено") -> "ручная остановка"
+            else -> "проверьте историю заказов"
+        }
+        BackgroundRunTrace.note(context, "Завершено: $result; этап: $finalStage; причина: $reason")
         // Stop the temporary foreground notification before publishing the verified result.
         TradeForegroundService.finish(context)
         if (OrderPendingNotificationPolicy.shouldNotify(result)) {

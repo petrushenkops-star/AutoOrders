@@ -19,8 +19,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // Increase versionCode for EVERY published update.
-        versionCode = 23
-        versionName = "0.5.0"
+        versionCode = 24
+        versionName = "0.5.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
