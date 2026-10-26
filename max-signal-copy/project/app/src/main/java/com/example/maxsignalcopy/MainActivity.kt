@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.res.Configuration
-import android.content.pm.PackageManager
 import android.util.Rational
 import android.app.TimePickerDialog
 import android.content.Intent
