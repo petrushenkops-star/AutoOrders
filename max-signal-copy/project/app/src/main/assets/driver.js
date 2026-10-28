@@ -284,8 +284,18 @@
   }
   if (["NAVIGATE_TRADE", "WAIT_PROMO_DISMISS", "WAIT_PROMO_DISMISS_ORDERS", "OPEN_FAST_COPY", "WAIT_TRADE", "NAVIGATE_ORDERS"].includes(stage)) {
     if (promoDialog()) {
-      if (stage === "WAIT_PROMO_DISMISS" || stage === "WAIT_PROMO_DISMISS_ORDERS")
+      if (stage === "WAIT_PROMO_DISMISS" || stage === "WAIT_PROMO_DISMISS_ORDERS") {
+        // Safe navigation-only recovery: the site may re-render the promotional
+        // overlay and lose the first click. NEVER click a financial control here.
+        if ([8, 16, 24].includes(stageTicks)) {
+          const retry = closePromo();
+          if (retry !== "clicked") return reply("error", "", "Не удалось повторно закрыть рекламу LUMEN X.");
+          return reply("wait", "", "Повторно закрываю рекламу LUMEN X");
+        }
+        if (stageTicks >= 32)
+          return reply("error", "", "Реклама LUMEN X не закрылась. Повтор заказа не выполняется.");
         return reply("wait", "", "Ожидание закрытия рекламного окна LUMEN X");
+      }
       const close = closePromo();
       if (close === "clicked") return reply("advance", stage === "NAVIGATE_ORDERS" ? "WAIT_PROMO_DISMISS_ORDERS" : "WAIT_PROMO_DISMISS", "Закрываю рекламное окно LUMEN X");
       return reply("error", "", "Окно LUMEN X найдено, но его крестик закрытия не распознан. Заказ не отправлялся.");

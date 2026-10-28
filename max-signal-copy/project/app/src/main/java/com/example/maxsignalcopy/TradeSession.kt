@@ -3,6 +3,7 @@ package com.example.maxsignalcopy
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.MutableContextWrapper
+import android.os.SystemClock
 import android.webkit.WebView
 import java.lang.ref.WeakReference
 
@@ -13,6 +14,8 @@ object TradeSession {
     private var listener: WeakReference<MainActivity>? = null
     private var app: Context? = null
     private var running = false
+    private var lastLoggedStage = ""
+    private var lastStageLogAtMs = 0L
     var lastStatus: String = ""
         private set
 
@@ -54,6 +57,8 @@ object TradeSession {
             return false
         }
         running = true
+        lastLoggedStage = ""
+        lastStageLogAtMs = 0L
         app?.let { BackgroundRunTrace.note(it, "Начат заказ, служба активна") }
         engine!!.start(code)
         // The engine can fail synchronously if the web session has expired.
@@ -61,7 +66,18 @@ object TradeSession {
     }
 
     /** Called by the foreground service, not by the Activity timer. */
-    fun pulse() { if (running) engine?.pulse() }
+    fun pulse() {
+        if (!running) return
+        engine?.pulse()
+        if (!running) return
+        val stage = engine?.stageName().orEmpty()
+        val now = SystemClock.elapsedRealtime()
+        if (stage.isNotBlank() && (stage != lastLoggedStage || now - lastStageLogAtMs >= 20_000L)) {
+            lastLoggedStage = stage
+            lastStageLogAtMs = now
+            app?.let { BackgroundRunTrace.note(it, "Работа службы, этап: $stage") }
+        }
+    }
 
     fun stageForDiagnostics() = engine?.stageName().orEmpty().ifBlank { "Нет заказа" }
 

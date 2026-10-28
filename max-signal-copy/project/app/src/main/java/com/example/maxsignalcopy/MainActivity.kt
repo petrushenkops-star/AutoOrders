@@ -158,7 +158,7 @@ class MainActivity : Activity() {
         }
         setContentView(root)
         if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
-        titleView = label("MAX Автосигналы · v0.5.1", true).apply {
+        titleView = label("MAX Автосигналы · v0.5.2", true).apply {
             textSize = 16f
             setPadding(dp(10), dp(2), dp(10), dp(1))
         }
@@ -473,6 +473,7 @@ class MainActivity : Activity() {
             if (automation.isActive()) status.text = "Дождитесь завершения заказа."
             else openSite()
         }
+        bottomButton("Мини-окно") { launchMiniWindow() }
         bottomButton("Весь экран") { setSiteFullscreen(true) }
         bottomButton("СТОП") {
             TradeSession.stop()
@@ -627,6 +628,36 @@ class MainActivity : Activity() {
 
         private fun openSite() { browser.loadUrl("https://lumecoe.com/ru") }
 
+    private fun launchMiniWindow() {
+        if (!TradeSession.isActive()) {
+            status.text = "Сначала запустите заказ с новым кодом."
+            return
+        }
+        if (Build.VERSION.SDK_INT < 26 ||
+            !packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            val reason = "Мини-окно не поддерживается устройством. Сайт останется открытым."
+            status.text = reason
+            BackgroundRunTrace.note(this, reason)
+            return
+        }
+        if (!getSharedPreferences("trade_minipip_v1", MODE_PRIVATE).getBoolean("enabled", true)) {
+            status.text = "Включите мини-окно в настройках перед заказом."
+            BackgroundRunTrace.note(this, "Мини-окно выключено в настройках")
+            return
+        }
+        runCatching { enterPictureInPictureMode(pictureInPictureParameters(false)) }
+            .onSuccess { entered ->
+                val message = if (entered) "Мини-окно запущено вручную" else
+                    "Android отказал в запуске мини-окна. Не сворачивайте сайт обычным способом."
+                BackgroundRunTrace.note(this, message)
+                if (!entered) status.text = message
+            }.onFailure {
+                val message = "Не удалось открыть мини-окно: ${it.javaClass.simpleName}"
+                BackgroundRunTrace.note(this, message)
+                status.text = message
+            }
+    }
+
     private fun shouldKeepVisibleForTrade(): Boolean {
         if (Build.VERSION.SDK_INT < 26 || !TradeSession.isActive() || !visibleSite) return false
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
@@ -686,6 +717,14 @@ class MainActivity : Activity() {
         if (::backgroundTrace.isInitialized) backgroundTrace.text = BackgroundRunTrace.read(this)
         checkHandler.removeCallbacks(scheduledTelegramCheck)
         checkHandler.post(scheduledTelegramCheck)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (TradeSession.isActive() && Build.VERSION.SDK_INT >= 26 && !isInPictureInPictureMode) {
+            BackgroundRunTrace.note(this,
+                "Экран скрыт без мини-окна, возможна задержка WebView: ${TradeSession.stageForDiagnostics()}")
+        }
     }
 
     override fun onPause() {

@@ -56,6 +56,10 @@ const tradeUnderPromo=makeElement('Торговля',{tagName:'DIV',className:'v
 x=run('NAVIGATE_TRADE',[promo,tradeUnderPromo]);
 resultIs(x,'advance','WAIT_PROMO_DISMISS');assert.equal(cross.clicks,1);assert.equal(tradeUnderPromo.clicks||0,0);
 x=run('WAIT_PROMO_DISMISS',[promo,tradeUnderPromo]);resultIs(x,'wait');assert.equal(cross.clicks,1);
+x=run('WAIT_PROMO_DISMISS',[promo,tradeUnderPromo],'LUMEN X','8438078','',8);
+resultIs(x,'wait');assert.equal(cross.clicks,2,'retry touches only promo X');
+x=run('WAIT_PROMO_DISMISS',[promo,tradeUnderPromo],'LUMEN X','8438078','',32);
+resultIs(x,'error');assert.equal(tradeUnderPromo.clicks||0,0,'never click trade while promo persists');
 x=run('WAIT_PROMO_DISMISS',[tradeUnderPromo]);resultIs(x,'advance','NAVIGATE_TRADE');
 // Unknown advertisement close must stop instead of clicking dangerous overlay.
 x=run('NAVIGATE_TRADE',[makeElement('LUMEN X',{tagName:'DIV',rect:{top:120,left:25,width:340,height:500}})]);
