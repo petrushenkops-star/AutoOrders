@@ -146,7 +146,7 @@ class TelegramBridge(private val context:Context, private val onStatus:(String)-
         send("SearchChats", mapOf("query" to TelegramCodePolicy.CHAT_TITLE,"limit" to 100)) { result ->
             if (result is TdApi.Error) return@send
             val ids=get(result,"chatIds") as? LongArray
-            if (ids.isNullOrEmpty()) {
+            if (ids == null || ids.isEmpty()) {
                 // This server request only searches chats already known to the account.
                 send("SearchChatsOnServer",
                     mapOf("query" to TelegramCodePolicy.CHAT_TITLE,"limit" to 100)) { serverResult ->
