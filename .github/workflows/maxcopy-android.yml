@@ -90,11 +90,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='25' versionName='0.5.2'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='26' versionName='0.5.3'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.5.2-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.5.3-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -103,19 +103,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="max-copy-v0.5.2"
+          tag="max-copy-v0.5.3"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" MaxSignalCopy-0.5.2-signed.apk --target "$GITHUB_SHA" \
-              --title "MAX Автосигналы 0.5.2 — постоянная подпись" \
-              --notes "Explicit Mini Window button to enter Android Picture-in-Picture while a user-initiated order is active, with diagnostics for missing PiP and foreground-service stage progress. Safe bounded retry of LUMEN X advertisement close control; no new order or financial click retry. Keeps Telegram schedule, Quick popup shield, original package and signing key. Validate on device; no guarantee of fully hidden WebView or lock-screen trading." \
+            gh release create "$tag" MaxSignalCopy-0.5.3-signed.apk --target "$GITHUB_SHA" \
+              --title "MAX Автосигналы 0.5.3 — постоянная подпись" \
+              --notes "Fixed the Telegram TDLib chat-list bug: ChatListMain is now passed as a data object to LoadChats, 404/end-of-list is handled correctly, and local chat search can fall back to server-known chats. No Telegram-triggered trading, no changes to manual order logic, Telegram authorisation still needs own api_id/api_hash, real chat access untested." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MaxSignalCopy-0.5.2-signed-apk
-          path: MaxSignalCopy-0.5.2-signed.apk
+          name: MaxSignalCopy-0.5.3-signed-apk
+          path: MaxSignalCopy-0.5.3-signed.apk
           if-no-files-found: error

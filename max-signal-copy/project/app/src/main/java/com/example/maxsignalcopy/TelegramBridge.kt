@@ -44,7 +44,7 @@ class TelegramBridge(private val context:Context, private val onStatus:(String)-
         val req=tdRequest(name,fields) ?: run {info("TDLib не поддерживает операцию $name");return}
         val c=client?:run{info("Telegram не подключён");return}
         c.send(req,{ result ->
-            if (result is TdApi.Error) {
+            if (result is TdApi.Error && !(name == "LoadChats" && result.code == 404)) {
                 // Never show authentication code, API hash or message text.
                 info("Telegram API: ошибка ${result.code}. Проверьте соединение и права доступа.")
             }
@@ -77,7 +77,7 @@ class TelegramBridge(private val context:Context, private val onStatus:(String)-
                     "apiHash" to TelegramCredentials.apiHash(context),
                     "systemLanguageCode" to "ru", "deviceModel" to Build.MODEL,
                     "systemVersion" to Build.VERSION.RELEASE,
-                    "applicationVersion" to "0.4.1"
+                    "applicationVersion" to "0.5.3"
                 )
                 send("SetTdlibParameters",settings)
             }
@@ -108,32 +108,51 @@ class TelegramBridge(private val context:Context, private val onStatus:(String)-
         if(SignalPolicy.parseTime(start)==null || SignalPolicy.parseTime(end)==null || digits !in 4..10){
             info("Укажите время HH:mm и длину кода 4–10");return
         }
-        info("Telegram: ищу «КОМАНДА»…")
-        // Load known chats before search. This is a read-only request.
-        send("LoadChats",mapOf("chatList" to (tdRequest("ChatListMain",emptyMap())?:run {
-            info("Нет доступа к списку чатов");return
-        }),"limit" to 100)) {
+        info("Telegram: обновляю список чатов…")
+        // ChatListMain is a TDLib data object, NOT a TdApi.Function.
+        // Passing it through tdRequest previously made every search fail before it started.
+        send("LoadChats", mapOf("chatList" to TdApi.ChatListMain(), "limit" to 100)) { result ->
+            // 404 means all chats have already been loaded: still search the cached list.
+            if (result is TdApi.Error && result.code != 404) {
+                info("Telegram: не удалось загрузить чаты (код ${result.code}).")
+                return@send
+            }
             searchChat(date,start,end,digits)
         }
     }
     private fun searchChat(date:LocalDate,start:String,end:String,digits:Int) {
-        send("SearchChats",mapOf("query" to TelegramCodePolicy.CHAT_TITLE,"limit" to 100)) { result ->
-            if(result is TdApi.Error)return@send
+        fun validateChats(result: TdApi.Object) {
+            if (result is TdApi.Error) return
             val ids=get(result,"chatIds") as? LongArray
-            if(ids==null || ids.isEmpty()) {info("Чат «КОМАНДА» не найден среди доступных чатов");return@send}
+            if (ids==null || ids.isEmpty()) {
+                info("Чат «КОМАНДА» не найден в доступных чатах.")
+                return
+            }
             val matching=mutableListOf<Long>()
             fun next(i:Int) {
-                if(i>=ids.size) {
-                    if(matching.size!=1) info("Чатов с точным именем «КОМАНДА»: ${matching.size}. Выберите уникальный чат.")
+                if (i>=ids.size) {
+                    if (matching.size!=1)
+                        info("Чатов с точным именем «КОМАНДА»: ${matching.size}. Требуется выбрать однозначный чат.")
                     else searchTopic(matching.single(),date,start,end,digits)
                     return
                 }
-                send("GetChat",mapOf("chatId" to ids[i])) { chat ->
-                    if (get(chat,"title")?.toString()?.trim()==TelegramCodePolicy.CHAT_TITLE)matching.add(ids[i])
+                send("GetChat", mapOf("chatId" to ids[i])) { chat ->
+                    if (get(chat,"title")?.toString()?.trim()==TelegramCodePolicy.CHAT_TITLE) matching.add(ids[i])
                     next(i+1)
                 }
             }
             next(0)
+        }
+        send("SearchChats", mapOf("query" to TelegramCodePolicy.CHAT_TITLE,"limit" to 100)) { result ->
+            if (result is TdApi.Error) return@send
+            val ids=get(result,"chatIds") as? LongArray
+            if (ids.isNullOrEmpty()) {
+                // This server request only searches chats already known to the account.
+                send("SearchChatsOnServer",
+                    mapOf("query" to TelegramCodePolicy.CHAT_TITLE,"limit" to 100)) { serverResult ->
+                    validateChats(serverResult)
+                }
+            } else validateChats(result)
         }
     }
     private fun searchTopic(chatId:Long,date:LocalDate,start:String,end:String,digits:Int) {

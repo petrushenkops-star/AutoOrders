@@ -13,4 +13,10 @@ assert(src.includes('checkHandler.removeCallbacks(scheduledTelegramCheck)'), 'St
 assert(store.includes('getSharedPreferences'), 'Schedule is persisted');
 assert(model.includes('duration') && model.includes('occupied'), 'Reject overlapping windows across week boundary');
 assert(model.includes('date.plusDays'), 'Cross-midnight windows supported');
-console.log('Weekly Telegram schedule UI/read-only checks passed.');
+const telegram = fs.readFileSync('app/src/main/java/com/example/maxsignalcopy/TelegramBridge.kt','utf8');
+assert(telegram.includes('TdApi.ChatListMain()'), 'Use data object for TDLib chat list');
+assert(!telegram.includes('tdRequest("ChatListMain"'), 'Never cast ChatListMain to TdApi.Function');
+assert(telegram.includes('SearchChatsOnServer'), 'Search known chats when not in local cache');
+assert(telegram.includes('result.code != 404'), 'Fully loaded chat list is not treated as a failure');
+assert(!telegram.includes('TradeSession.start('), 'Read-only Telegram code cannot trigger an order');
+console.log('Weekly Telegram schedule and chat discovery smoke checks passed.');
