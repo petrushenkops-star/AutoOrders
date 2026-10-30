@@ -12,7 +12,7 @@ assert(src.includes('ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f'), 'Browser fill
 assert(src.includes('manualBar.addView(manualCode'), 'Manual code is in compact row');
 assert(src.includes('minWidth = 0'), 'Compact bottom buttons allowed to shrink');
 assert(gradle.includes('applicationId = "com.example.maxsignalcopy"'));
-assert(gradle.includes('versionCode = 26') && gradle.includes('versionName = "0.5.3"'));
+assert(gradle.includes('versionCode = 27') && gradle.includes('versionName = "0.5.4"'));
 console.log('UI smoke checks passed.');
 
 // The old MAX bot settings and activation UI must not return.
@@ -26,4 +26,4 @@ assert(src.includes('Ручной ввод кода') && src.includes('Сохр�
 assert(src.includes('Расписание поиска Telegram'));
 assert(src.includes('TradeSession.start(') && src.includes('WebViewCompat.addDocumentStartJavaScript'));
 console.log('Clean settings and manual trading smoke checks passed.');
-console.log('MAX history integration smoke checks passed.');
+console.log('Retired history integration smoke checks passed.');
