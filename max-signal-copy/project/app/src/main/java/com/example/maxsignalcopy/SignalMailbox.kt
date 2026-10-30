@@ -7,7 +7,7 @@ import java.time.Instant
 
 /** One signal can be pending at once. Interrupted/unknown orders cannot be silently re-submitted. */
 object SignalMailbox {
-    private const val PREFS = "max_signal_copy_v1"
+    private const val PREFS = "max_signal_copy_v1" // Old storage key retained for upgrades
     private const val DONE = "attempted_fingerprints"
     private val lock = Any()
 
@@ -51,7 +51,7 @@ object SignalMailbox {
         val p = prefs(context)
         val day = Instant.ofEpochMilli(System.currentTimeMillis())
             .atZone(ZoneId.systemDefault()).toLocalDate()
-        val hash = SignalPolicy.fingerprint(code, "MAX-SIGNAL", day)
+        val hash = SignalPolicy.fingerprint(code, "MAX-SIGNAL", day) // Legacy fingerprint scope retained to prevent duplicate orders
         val attempted = p.getStringSet(DONE, emptySet()).orEmpty()
         val block = ManualClaimGuard.classify(
             anotherOrderRunning = p.getString("running", null) != null,
