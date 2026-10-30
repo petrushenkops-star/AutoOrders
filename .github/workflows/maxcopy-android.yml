@@ -1,4 +1,4 @@
-name: MAX Signal Copy — signed APK
+name: Автосигналы — signed APK
 on:
   push:
     branches: [max-signal-copy]
@@ -90,11 +90,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='26' versionName='0.5.3'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='27' versionName='0.5.4'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/MaxSignalCopy-0.5.3-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/Avtosignaly-0.5.4-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -103,19 +103,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="max-copy-v0.5.3"
+          tag="autosignals-v0.5.4"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" MaxSignalCopy-0.5.3-signed.apk --target "$GITHUB_SHA" \
-              --title "MAX Автосигналы 0.5.3 — постоянная подпись" \
-              --notes "Fixed the Telegram TDLib chat-list bug: ChatListMain is now passed as a data object to LoadChats, 404/end-of-list is handled correctly, and local chat search can fall back to server-known chats. No Telegram-triggered trading, no changes to manual order logic, Telegram authorisation still needs own api_id/api_hash, real chat access untested." \
+            gh release create "$tag" Avtosignaly-0.5.4-signed.apk --target "$GITHUB_SHA" \
+              --title "Автосигналы 0.5.4 — постоянная подпись" \
+              --notes "Переименование приложения в Автосигналы. Функции Telegram, ручные заказы и постоянная подпись сохранены." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MaxSignalCopy-0.5.3-signed-apk
-          path: MaxSignalCopy-0.5.3-signed.apk
+          name: Avtosignaly-0.5.4-signed-apk
+          path: Avtosignaly-0.5.4-signed.apk
           if-no-files-found: error
