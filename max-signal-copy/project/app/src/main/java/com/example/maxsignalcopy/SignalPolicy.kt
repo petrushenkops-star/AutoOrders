@@ -19,7 +19,6 @@ data class SignalSettings(
 
 object SignalPolicy {
     private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
-    const val MAX_PACKAGE = "ru.oneme.app"
 
     fun valid(settings: SignalSettings): Boolean =
         (!settings.armed || settings.chatTitle.trim().isNotEmpty()) &&
@@ -27,7 +26,7 @@ object SignalPolicy {
             parseTime(settings.windowStart) != null &&
             parseTime(settings.windowEnd) != null
 
-    /** Manual operation doesn't require access to MAX or a configured chat. */
+    /** Manual operation does not require any connected messenger. */
     fun validManualCode(code: String, expectedDigits: Int): Boolean =
         expectedDigits in 4..10 && code.length == expectedDigits && code.all { it in '0'..'9' }
 
@@ -61,21 +60,6 @@ object SignalPolicy {
         val candidates = Regex("(?<![0-9])[0-9]{$digits}(?![0-9])")
             .findAll(message).map { it.value }.distinct().toList()
         return candidates.singleOrNull()
-    }
-
-    fun fromNotification(
-        packageName: String,
-        candidateChatTitles: List<String>,
-        messageText: String,
-        timestamp: Long,
-        settings: SignalSettings,
-        zone: ZoneId = ZoneId.systemDefault(),
-    ): String? {
-        if (!settings.armed || !valid(settings)) return null
-        if (packageName != MAX_PACKAGE) return null
-        if (candidateChatTitles.none { matchesChat(it, settings.chatTitle) }) return null
-        if (!withinWindow(settings, timestamp, zone)) return null
-        return extractCode(messageText, settings.codeDigits)
     }
 
     /** Persist only a fingerprint after attempting a code, never the raw code. */
