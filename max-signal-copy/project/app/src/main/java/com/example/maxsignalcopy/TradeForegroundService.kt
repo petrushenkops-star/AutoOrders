@@ -101,7 +101,7 @@ class TradeForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_popup_sync)
-            .setContentTitle("MAX Автосигналы: заказ выполняется")
+            .setContentTitle("Автосигналы: заказ выполняется")
             .setContentText(message)
             .setOngoing(true)
             .setContentIntent(open)
