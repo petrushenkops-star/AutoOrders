@@ -7,7 +7,7 @@ const session = source('TradeSession');
 const result = source('OrderPendingNotifier');
 assert(ui.includes('Сохранить длину кода') && ui.includes('Telegram'));
 for (const retired of ['Проверить историю MAX','chat_id чата ЛюменХ','MAX: поиск/пуск','MaxApiCredentials','scanChatHistory(']) {
-  assert(!ui.includes(retired), 'Retired MAX UI reference: '+retired);
+  assert(!ui.includes(retired), 'Retired messenger UI reference: '+retired);
 }
 assert(service.includes('stopForeground(STOP_FOREGROUND_REMOVE)'));
 assert(service.includes('.cancel(NOTIFICATION)'));
@@ -17,4 +17,4 @@ assert(result.includes('manager.cancel(801)'), 'Remove stale progress before res
 assert(ui.includes('WebViewCompat.addDocumentStartJavaScript'), 'Quick popup fix preserved');
 assert(ui.includes('TradeSession.start(this, code)'), 'Manual trading preserved');
 assert(ui.includes('WeeklySearchSchedule.activeAt'), 'Weekly Telegram schedule preserved');
-console.log('Retired MAX cleanup and single-result notification smoke checks passed.');
+console.log('Retired messenger cleanup and single-result notification smoke checks passed.');
