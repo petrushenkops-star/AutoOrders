@@ -95,11 +95,11 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         if (!TradeSession.isActive()) SignalMailbox.markInterrupted(this)
         // The new Telegram integration is read-only until explicitly tested.
-        // Never enable the retired MAX integration or re-submit a saved code.
+        // Never enable the retired messenger integration or re-submit a saved code.
         val old = SignalMailbox.settings(this)
         if (old.armed || old.autoConfirm) SignalMailbox.update(this, old.copy(armed=false,autoConfirm=false))
         if (!TradeSession.isActive()) SignalMailbox.clearPending(this)
-        // Discard credentials for the retired MAX bot; Telegram credentials are separate.
+        // Discard credentials for the retired messenger bot; Telegram credentials are separate.
         getSharedPreferences("max_history_bot_credentials", MODE_PRIVATE).edit().clear().apply()
         runCatching {
             val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -158,7 +158,7 @@ class MainActivity : Activity() {
         }
         setContentView(root)
         if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
-        titleView = label("MAX Автосигналы · v0.5.3", true).apply {
+        titleView = label("Автосигналы · v0.5.4", true).apply {
             textSize = 16f
             setPadding(dp(10), dp(2), dp(10), dp(1))
         }
