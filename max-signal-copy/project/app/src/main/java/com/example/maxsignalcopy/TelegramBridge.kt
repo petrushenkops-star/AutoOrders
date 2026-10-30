@@ -77,7 +77,7 @@ class TelegramBridge(private val context:Context, private val onStatus:(String)-
                     "apiHash" to TelegramCredentials.apiHash(context),
                     "systemLanguageCode" to "ru", "deviceModel" to Build.MODEL,
                     "systemVersion" to Build.VERSION.RELEASE,
-                    "applicationVersion" to "0.5.3"
+                    "applicationVersion" to "0.5.4"
                 )
                 send("SetTdlibParameters",settings)
             }
