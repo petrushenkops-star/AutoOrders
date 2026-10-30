@@ -54,7 +54,6 @@ class SignalPolicyTest {
     }
 
     @Test fun fingerprintIsStable() {
-        val settings = SignalSettings("A", "00:00", "00:00", 7, armed = false)
         assertEquals(SignalPolicy.fingerprint("8438078", "A", LocalDate.of(2026,10,20)), SignalPolicy.fingerprint("8438078", "A", LocalDate.of(2026,10,20)))
         assertNotEquals(SignalPolicy.fingerprint("8438078", "A", LocalDate.of(2026,10,20)), SignalPolicy.fingerprint("8438079", "A", LocalDate.of(2026,10,20)))
         assertNotEquals(SignalPolicy.fingerprint("8438078", "A", LocalDate.of(2026,10,20)), SignalPolicy.fingerprint("8438078", "A", LocalDate.of(2026,10,21)))
