@@ -217,6 +217,19 @@
     return unique.filter(e => !unique.some(other => other !== e && isParentOf(other, e)));
   }
 
+  // The document-start shield may hide this popup with opacity:0 while
+  // preserving its DOM geometry and text. Only here, after a matching order
+  // is verified, treat an unpainted non-financial popup as absent.
+  function paintedOnScreen(el) {
+    for (let node = el; node && node.nodeType !== 9; node = node.parentElement) {
+      if (typeof node.getBoundingClientRect !== "function") continue;
+      const css = window.getComputedStyle(node);
+      if (css.display === "none" || css.visibility === "hidden" ||
+          Number(css.opacity ?? "1") <= 0.01) return false;
+    }
+    return true;
+  }
+
   // The site can leave its own "Быстрый / Загрузка..." popup floating over
   // the Orders page even after the newly created order has been verified.
   // We must NOT hide the WebView, change popup CSS, or interfere with the
@@ -225,18 +238,19 @@
   function staleQuickDialogs() {
     const w = window.innerWidth || 400, h = window.innerHeight || 700;
     const headings = [...document.querySelectorAll("div, span, strong, h1, h2, h3, [class*='header']")]
-      .filter(e => visible(e) && text(e) === "Быстрый");
+      .filter(e => visible(e) && paintedOnScreen(e) && text(e) === "Быстрый");
     const dialogs = new Set();
     for (const heading of headings) {
       for (let el = heading.parentElement, depth = 0; el && depth < 9; el = el.parentElement, depth++) {
         const r = rect(el), content = text(el);
-        if (!r || !visible(el) || r.width > w * 0.98 || r.height > h * 0.89) break;
+        if (!r || !visible(el) || !paintedOnScreen(el) ||
+            r.width > w * 0.98 || r.height > h * 0.89) break;
         if (r.width < 140 || r.height < 120) continue;
         // Use an exact heading plus an unmistakable acknowledgment button.
         // Do NOT match financial "Подтв." and never use an unrelated popup.
         if (!/Понятно/.test(content) || /Подтв\.|Следовать/.test(content)) continue;
         const innerHeadings = [...el.querySelectorAll("div, span, strong, h1, h2, h3, [class*='header']")]
-          .filter(e => visible(e) && text(e) === "Быстрый");
+          .filter(e => visible(e) && paintedOnScreen(e) && text(e) === "Быстрый");
         if (innerHeadings.length === 0) continue;
         dialogs.add(el);
         break;
