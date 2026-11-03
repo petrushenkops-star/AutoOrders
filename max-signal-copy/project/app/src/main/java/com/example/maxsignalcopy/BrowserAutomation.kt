@@ -35,9 +35,8 @@ class BrowserAutomation(
 
     fun onPageFinished(url: String) {
         // Only the main-frame homepage load that we requested unlocks the driver.
-        if (active && loadingHome && safeUrl(url)) {
-            val uri = android.net.Uri.parse(url)
-            if (uri.path.orEmpty().trimEnd('/') == "/ru") homeLoaded = true
+        if (active && loadingHome && SiteConfig.isHomePage(url)) {
+            homeLoaded = true
         }
     }
 

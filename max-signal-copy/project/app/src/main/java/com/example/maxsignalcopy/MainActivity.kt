@@ -157,7 +157,7 @@ class MainActivity : Activity() {
         }
         setContentView(root)
         if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
-        titleView = label("Автосигналы · v0.5.5", true).apply {
+        titleView = label("Автосигналы · v0.5.7", true).apply {
             textSize = 16f
             setPadding(dp(10), dp(2), dp(10), dp(1))
         }
