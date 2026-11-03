@@ -48,6 +48,7 @@ jobs:
         working-directory: max-signal-copy/project
         run: |
           node tests/driver-smoke.js
+          node tests/site-url-smoke.js
           node tests/ui-layout-smoke.js
           node tests/cleanup-smoke.js
           node tests/overlay-smoke.js
@@ -90,11 +91,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='28' versionName='0.5.5'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='29' versionName='0.5.6'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/Avtosignaly-0.5.5-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/Avtosignaly-0.5.6-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -103,19 +104,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="autosignals-v0.5.5"
+          tag="autosignals-v0.5.6"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" Avtosignaly-0.5.5-signed.apk --target "$GITHUB_SHA" \
-              --title "Автосигналы 0.5.5 — постоянная подпись" \
-              --notes "Исправлено ложное ожидание закрытия невидимого окна Быстрый после подтверждения статуса В ожидании. Порядок оформления и проверка заказа не изменены." \
+            gh release create "$tag" Avtosignaly-0.5.6-signed.apk --target "$GITHUB_SHA" \
+              --title "Автосигналы 0.5.6 — постоянная подпись" \
+              --notes "Единый адрес сайта: https://lumecoe.com/ru. Веб-браузер и автоматизация используют одну конфигурацию URL. Сохранены настройки, приложение, постоянная подпись и правила проверки заказа." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Avtosignaly-0.5.5-signed-apk
-          path: Avtosignaly-0.5.5-signed.apk
+          name: Avtosignaly-0.5.6-signed-apk
+          path: Avtosignaly-0.5.6-signed.apk
           if-no-files-found: error

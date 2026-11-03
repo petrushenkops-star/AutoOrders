@@ -38,7 +38,6 @@ import android.text.InputType
 import android.graphics.Typeface
 import android.graphics.Color
 import android.view.Gravity
-import android.net.Uri
 import android.os.SystemClock
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -395,9 +394,7 @@ class MainActivity : Activity() {
             settings.displayZoomControls = false
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    val uri = request?.url ?: return true
-                    val host = uri.host.orEmpty().lowercase()
-                    return uri.scheme != "https" || !(host == "lumecoe.com" || host.endsWith(".lumecoe.com"))
+                    return !SiteConfig.accepts(request?.url)
                 }
                 override fun onReceivedError(view: WebView?, req: WebResourceRequest?, error: WebResourceError?) {
                     if (req?.isForMainFrame == true) status.text = "Сайт недоступен. Проверьте соединение."
@@ -423,7 +420,7 @@ class MainActivity : Activity() {
                 .bufferedReader().use { it.readText() }
             WebViewCompat.addDocumentStartJavaScript(
                 browser, cosmeticScript,
-                setOf("https://lumecoe.com", "https://*.lumecoe.com")
+                SiteConfig.DOCUMENT_START_ORIGINS
             )
         } else if (!reusingActiveBrowser) {
             // Unsupported Android System WebView: do not fall back to covering
@@ -589,9 +586,7 @@ class MainActivity : Activity() {
             status.text = "Код должен содержать ровно $expected цифр."
             return
         }
-        val uri = Uri.parse(browser.url.orEmpty())
-        val host = uri.host.orEmpty().lowercase()
-        if (uri.scheme != "https" || (host != "lumecoe.com" && !host.endsWith(".lumecoe.com"))) {
+        if (!SiteConfig.accepts(browser.url.orEmpty())) {
             status.text = "Сначала откройте сайт LumeCo и войдите в личный кабинет."
             return
         }
@@ -626,7 +621,7 @@ class MainActivity : Activity() {
         siteView.visibility = View.VISIBLE
     }
 
-        private fun openSite() { browser.loadUrl("https://lumecoe.com/ru") }
+    private fun openSite() { browser.loadUrl(SiteConfig.HOME_URL) }
 
     private fun launchMiniWindow() {
         if (!TradeSession.isActive()) {

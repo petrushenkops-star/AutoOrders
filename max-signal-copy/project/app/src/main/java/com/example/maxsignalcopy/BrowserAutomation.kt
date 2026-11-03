@@ -31,7 +31,7 @@ class BrowserAutomation(
     private var lastStage = ""
     private var stageTicks = 0
     private var orderListRecoveryUsed = false
-    private val homeUrl = "https://lumecoe.com/ru"
+    private val homeUrl = SiteConfig.HOME_URL
 
     fun onPageFinished(url: String) {
         // Only the main-frame homepage load that we requested unlocks the driver.
@@ -64,7 +64,7 @@ class BrowserAutomation(
         if (active) return
         val url = browser.url.orEmpty()
         if (!safeUrl(url)) {
-            finished("ОШИБКА", "Откройте https://lumecoe.com/ru и войдите в аккаунт.", true)
+            finished("ОШИБКА", "Откройте ${SiteConfig.HOME_URL} и войдите в аккаунт.", true)
             return
         }
         script = browser.context.assets.open("driver.js").bufferedReader().use { it.readText() }
@@ -87,11 +87,7 @@ class BrowserAutomation(
             else "Остановлено до отправки заказа.")
     }
 
-    private fun safeUrl(url: String): Boolean {
-        val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return false
-        val host = uri.host.orEmpty().lowercase()
-        return uri.scheme == "https" && (host == "lumecoe.com" || host.endsWith(".lumecoe.com"))
-    }
+    private fun safeUrl(url: String): Boolean = SiteConfig.accepts(url)
 
     /** Service-driven single-flight execution on WebView's owning UI thread. */
     fun pulse() {

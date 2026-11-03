@@ -12,7 +12,7 @@ assert(src.includes('ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f'), 'Browser fill
 assert(src.includes('manualBar.addView(manualCode'), 'Manual code is in compact row');
 assert(src.includes('minWidth = 0'), 'Compact bottom buttons allowed to shrink');
 assert(gradle.includes('applicationId = "com.example.maxsignalcopy"'));
-assert(gradle.includes('versionCode = 28') && gradle.includes('versionName = "0.5.5"'));
+assert(gradle.includes('versionCode = 29') && gradle.includes('versionName = "0.5.6"'));
 console.log('UI smoke checks passed.');
 
 // The old MAX bot settings and activation UI must not return.
