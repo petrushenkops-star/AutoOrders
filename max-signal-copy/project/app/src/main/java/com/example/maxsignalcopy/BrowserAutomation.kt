@@ -59,6 +59,10 @@ class BrowserAutomation(
     }
 
     fun start(dynamicCode: String) {
+        if (!SiteConfig.AUTO_TRADING_ENABLED) {
+            finished("ОШИБКА", "Сайт не подтверждён, автоматические заказы отключены.", true)
+            return
+        }
         require(dynamicCode.all { it in '0'..'9' } && dynamicCode.length in 4..10)
         if (active) return
         val url = browser.url.orEmpty()
@@ -75,7 +79,7 @@ class BrowserAutomation(
         orderListRecoveryUsed = false
         lastStage = ""
         stageTicks = 0
-        reloadHome("NAVIGATE_TRADE", "Открываю главную страницу перед оформлением заказа")
+        reloadHome("NAVIGATE_TRADE", "Открываю страницу BTC/USDT перед оформлением заказа")
         // First and following steps run from the service heartbeat.
     }
 

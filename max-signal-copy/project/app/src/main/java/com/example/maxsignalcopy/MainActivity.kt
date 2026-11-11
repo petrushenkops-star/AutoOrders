@@ -2,6 +2,7 @@ package com.example.maxsignalcopy
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.content.res.Configuration
 import android.util.Rational
@@ -82,6 +83,7 @@ class MainActivity : Activity() {
         }
     }
     private val checkHandler = Handler(Looper.getMainLooper())
+    private var siteAcknowledged = false
     private var visibleSite = false
     private var fullscreenSite = false
     private lateinit var titleView: TextView
@@ -108,7 +110,7 @@ class MainActivity : Activity() {
         telegramBridge = TelegramBridge(applicationContext) { message -> telegramState.text = message }
         automation = TradeSession.bind(this, browser)
         TradeSession.attach(this)
-        if (!TradeSession.isActive()) openSite()
+        // New unverified website is never opened automatically on startup.
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 120)
         }
@@ -157,12 +159,12 @@ class MainActivity : Activity() {
         }
         setContentView(root)
         if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
-        titleView = label("Автосигналы · v0.5.7", true).apply {
+        titleView = label("Автосигналы · v0.5.8", true).apply {
             textSize = 16f
             setPadding(dp(10), dp(2), dp(10), dp(1))
         }
         root.addView(titleView)
-        status = label("Ручной режим: введите код на вкладке «Сайт».").apply {
+        status = label("Новый адрес не проверен. Отправка заказов отключена.").apply {
             textSize = 13f
             maxLines = 2
             setPadding(dp(10), dp(1), dp(10), dp(1))
@@ -201,6 +203,8 @@ class MainActivity : Activity() {
         settingsView = ScrollView(this)
         settingsView.addView(settingsColumn)
         root.addView(settingsView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        settingsColumn.addView(label("Проверка нового сайта", true))
+        settingsColumn.addView(label("pbeaocuec.com зарегистрирован недавно и отмечен сервисами проверки как потенциально опасный. Не вводите пароли, коды или платёжные данные без независимого подтверждения адреса. Автоматическая отправка заказов отключена."))
         settingsColumn.addView(label("TELEGRAM: КОМАНДА → Сигнал", true))
         settingsColumn.addView(label("Чтение истории через TDLib в обычном Telegram-аккаунте. Бот не нужен. На этом этапе только проверка чтения — ни один заказ из Telegram не отправляется."))
         telegramApiId = field("Telegram api_id", TelegramCredentials.apiId(this).takeIf { it>0 }?.toString() ?: "").apply { inputType=InputType.TYPE_CLASS_NUMBER }
@@ -435,11 +439,13 @@ class MainActivity : Activity() {
         }
         siteView.addView(manualBar)
         manualCode = field("Цифровой код", "")
+        manualCode.isEnabled = SiteConfig.AUTO_TRADING_ENABLED
         manualCode.inputType = android.text.InputType.TYPE_CLASS_NUMBER or
             android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
         manualBar.addView(manualCode, LinearLayout.LayoutParams(0, dp(46), 1f))
         Button(this).apply {
-            text = "Выполнить"
+            text = if (SiteConfig.AUTO_TRADING_ENABLED) "Выполнить" else "Отключено"
+            isEnabled = SiteConfig.AUTO_TRADING_ENABLED
             textSize = 12f
             isAllCaps = false
             setOnClickListener { runManualCode() }
@@ -576,6 +582,10 @@ class MainActivity : Activity() {
 
     /** One-shot manual code; Telegram search remains read-only. */
     private fun runManualCode() {
+        if (!SiteConfig.AUTO_TRADING_ENABLED) {
+            status.text = "Заказы заблокированы до проверки нового домена."
+            return
+        }
         if (!visibleSite || automation.isActive()) {
             status.text = "Дождитесь окончания текущего заказа."
             return
@@ -587,7 +597,7 @@ class MainActivity : Activity() {
             return
         }
         if (!SiteConfig.accepts(browser.url.orEmpty())) {
-            status.text = "Сначала откройте сайт LumeCo и войдите в личный кабинет."
+            status.text = "Проверьте адрес сайта перед входом в личный кабинет."
             return
         }
         val attempt = SignalMailbox.claimManualDetailed(this, code)
@@ -615,10 +625,26 @@ class MainActivity : Activity() {
     }
 
     private fun showSite() {
+        if (!siteAcknowledged) {
+            AlertDialog.Builder(this)
+                .setTitle("Проверка нового домена")
+                .setMessage("pbeaocuec.com — новый непроверенный сайт. " +
+                    "Есть предупреждения независимых сервисов о возможном фишинге. " +
+                    "Не вводите пароли, коды и платёжные данные до проверки принадлежности сайта. " +
+                    "Автоматическая отправка заказов отключена. Открыть страницу для просмотра?")
+                .setPositiveButton("Открыть") { _, _ ->
+                    siteAcknowledged = true
+                    showSite()
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+            return
+        }
         visibleSite = true
         setSiteFullscreen(false)
         settingsView.visibility = View.GONE
         siteView.visibility = View.VISIBLE
+        if (!SiteConfig.accepts(browser.url.orEmpty())) openSite()
     }
 
     private fun openSite() { browser.loadUrl(SiteConfig.HOME_URL) }

@@ -48,6 +48,10 @@ object TradeSession {
     fun isActive() = running && engine?.isActive() == true
 
     fun start(context: Context, code: String): Boolean {
+        if (!SiteConfig.AUTO_TRADING_ENABLED) {
+            report("Финансовые операции отключены до проверки сайта.")
+            return false
+        }
         if (running || engine == null) return false
         try {
             // Start a genuine OS foreground service BEFORE touching the trading DOM.
