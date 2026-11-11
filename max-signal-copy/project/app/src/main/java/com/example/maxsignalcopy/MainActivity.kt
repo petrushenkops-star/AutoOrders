@@ -23,6 +23,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
+import android.webkit.ConsoleMessage
+import android.webkit.CookieManager
+import android.webkit.WebResourceResponse
+import org.json.JSONTokener
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import android.webkit.WebSettings
@@ -83,6 +88,9 @@ class MainActivity : Activity() {
         }
     }
     private val checkHandler = Handler(Looper.getMainLooper())
+    private val siteProbeHandler = Handler(Looper.getMainLooper())
+    private var siteProbeVersion = 0
+    private var siteConsoleErrors = 0
     private var siteAcknowledged = false
     private var visibleSite = false
     private var fullscreenSite = false
@@ -159,7 +167,7 @@ class MainActivity : Activity() {
         }
         setContentView(root)
         if (Build.VERSION.SDK_INT >= 30) root.requestApplyInsets()
-        titleView = label("Автосигналы · v0.5.8", true).apply {
+        titleView = label("Автосигналы · v0.5.9", true).apply {
             textSize = 16f
             setPadding(dp(10), dp(2), dp(10), dp(1))
         }
@@ -204,6 +212,7 @@ class MainActivity : Activity() {
         settingsView.addView(settingsColumn)
         root.addView(settingsView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         settingsColumn.addView(label("Проверка нового сайта", true))
+        settingsColumn.addView(label("Если страница зависла на заставке, откройте её через системный браузер или попробуйте корневую страницу. Диагностика технических ошибок доступна ниже."))
         settingsColumn.addView(label("pbeaocuec.com зарегистрирован недавно и отмечен сервисами проверки как потенциально опасный. Не вводите пароли, коды или платёжные данные без независимого подтверждения адреса. Автоматическая отправка заказов отключена."))
         settingsColumn.addView(label("TELEGRAM: КОМАНДА → Сигнал", true))
         settingsColumn.addView(label("Чтение истории через TDLib в обычном Telegram-аккаунте. Бот не нужен. На этом этапе только проверка чтения — ни один заказ из Telegram не отправляется."))
@@ -390,21 +399,80 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true // Site SPA and DOM driver require JavaScript.
             if (Build.VERSION.SDK_INT >= 26) setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
             settings.domStorageEnabled = true
+            CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.setSupportMultipleWindows(false)
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = false
             settings.builtInZoomControls = true
             settings.displayZoomControls = false
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                    if (visibleSite && !TradeSession.isActive() && newProgress in 1..99) {
+                        status.text = "Загрузка сайта: $newProgress%"
+                    }
+                }
+                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                    if (consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR && siteConsoleErrors++ < 3) {
+                        // Never log console text: it may contain account or session secrets.
+                        BackgroundRunTrace.note(this@MainActivity, "Ошибка JavaScript в WebView (сообщение скрыто)")
+                    }
+                    return true
+                }
+            }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    return !SiteConfig.accepts(request?.url)
+                    // Previously blocked third-party subframes required by login/SPA widgets.
+                    // Limit the host rule to main-frame navigation only.
+                    if (request?.isForMainFrame != true) return false
+                    val allowed = SiteConfig.accepts(request.url)
+                    if (!allowed) {
+                        val host = request.url.host.orEmpty().take(80)
+                        BackgroundRunTrace.note(this@MainActivity, "Заблокирован переход сайта на другой хост: $host")
+                        status.text = "Сайт перенаправляет на другой адрес ($host). Проверьте его в браузере."
+                    }
+                    return !allowed
+                }
+                override fun onReceivedHttpError(view: WebView?, req: WebResourceRequest?, response: WebResourceResponse?) {
+                    if (req?.isForMainFrame == true) {
+                        val code = response?.statusCode ?: 0
+                        BackgroundRunTrace.note(this@MainActivity, "HTTP-ошибка главной страницы: $code")
+                        status.text = "Сайт вернул HTTP $code. Попробуйте открыть в браузере."
+                    }
                 }
                 override fun onReceivedError(view: WebView?, req: WebResourceRequest?, error: WebResourceError?) {
-                    if (req?.isForMainFrame == true) status.text = "Сайт недоступен. Проверьте соединение."
+                    if (req?.isForMainFrame == true) {
+                        val code = error?.errorCode ?: 0
+                        BackgroundRunTrace.note(this@MainActivity, "Ошибка WebView при загрузке: $code")
+                        status.text = "Ошибка загрузки WebView ($code). Проверьте сеть или откройте в браузере."
+                    }
                 }
                 override fun onPageFinished(view: WebView?, url: String?) {
                     TradeSession.pageFinished(url.orEmpty())
+                    if (SiteConfig.accepts(url.orEmpty()) && !TradeSession.isActive()) {
+                        val number = ++siteProbeVersion
+                        siteProbeHandler.postDelayed({
+                            if (number != siteProbeVersion || isDestroyed ||
+                                !visibleSite || TradeSession.isActive()) return@postDelayed
+                            val javascript = "(function(){return [document.readyState," +
+                                "document.querySelectorAll('button,input,a').length," +
+                                "(document.body ? (document.body.innerText||'').length : 0)].join('|')})()"
+                            browser.evaluateJavascript(javascript) { result ->
+                                if (number != siteProbeVersion || isDestroyed) return@evaluateJavascript
+                                val text = runCatching { JSONTokener(result).nextValue() as String }.getOrNull()
+                                val parts = text?.split('|').orEmpty()
+                                val controls = parts.getOrNull(1)?.toIntOrNull() ?: -1
+                                val bodyChars = parts.getOrNull(2)?.toIntOrNull() ?: -1
+                                if (parts.firstOrNull() == "complete" &&
+                                    controls in 0..1 && bodyChars in 0..75) {
+                                    BackgroundRunTrace.note(this@MainActivity,
+                                        "HTML загружен, но интерфейс не появился (элементов: $controls)")
+                                    status.text = "Сайт показывает заставку. Нажмите «Главная» или «Браузер»."
+                                }
+                            }
+                        }, 16_000L)
+                    }
                 }
                 override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                     TradeSession.rendererGone()
@@ -419,14 +487,15 @@ class MainActivity : Activity() {
         // first DOM mutation, while leaving the entire site, trading dialogs,
         // site scripts and user actions visible. Installation must precede
         // openSite/loadUrl so it runs before the website creates the popup.
-        if (!reusingActiveBrowser && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+        if (!reusingActiveBrowser && SiteConfig.ENABLE_COSMETIC_SCRIPT &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             val cosmeticScript = assets.open("quick-dialog-shield.js")
                 .bufferedReader().use { it.readText() }
             WebViewCompat.addDocumentStartJavaScript(
                 browser, cosmeticScript,
                 SiteConfig.DOCUMENT_START_ORIGINS
             )
-        } else if (!reusingActiveBrowser) {
+        } else if (!reusingActiveBrowser && SiteConfig.ENABLE_COSMETIC_SCRIPT) {
             // Unsupported Android System WebView: do not fall back to covering
             // the whole website or rewriting the order-confirmation DOM.
             status.text = "Обновите Android System WebView: скрытие окна «Быстрый» недоступно."
@@ -474,7 +543,17 @@ class MainActivity : Activity() {
         }
         bottomButton("Главная") {
             if (automation.isActive()) status.text = "Дождитесь завершения заказа."
-            else openSite()
+            else browser.loadUrl(SiteConfig.ROOT_URL)
+        }
+        bottomButton("Браузер") {
+            if (TradeSession.isActive()) {
+                status.text = "Дождитесь завершения текущего заказа."
+            } else runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(SiteConfig.HOME_URL))
+                    .addCategory(Intent.CATEGORY_BROWSABLE))
+            }.onFailure {
+                status.text = "Не удалось открыть системный браузер: ${it.javaClass.simpleName}"
+            }
         }
         bottomButton("Мини-окно") { launchMiniWindow() }
         bottomButton("Весь экран") { setSiteFullscreen(true) }
@@ -647,7 +726,12 @@ class MainActivity : Activity() {
         if (!SiteConfig.accepts(browser.url.orEmpty())) openSite()
     }
 
-    private fun openSite() { browser.loadUrl(SiteConfig.HOME_URL) }
+    private fun openSite() {
+        siteConsoleErrors = 0
+        siteProbeVersion++
+        status.text = "Открываю страницу фьючерсов BTC/USDT…"
+        browser.loadUrl(SiteConfig.HOME_URL)
+    }
 
     private fun launchMiniWindow() {
         if (!TradeSession.isActive()) {
@@ -770,6 +854,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        siteProbeVersion++
+        siteProbeHandler.removeCallbacksAndMessages(null)
         checkHandler.removeCallbacks(scheduledTelegramCheck)
         // Closing/recreating an Activity is not a request to cancel an active order.
         // Do not destroy its WebView: the explicit foreground service owns the run.

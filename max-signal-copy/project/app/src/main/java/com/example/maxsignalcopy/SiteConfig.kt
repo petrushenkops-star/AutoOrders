@@ -11,6 +11,9 @@ internal object SiteConfig {
     private const val HOST = "pbeaocuec.com"
     // Unverified domain: financial actions are disabled until independently checked.
     const val AUTO_TRADING_ENABLED = false
+    const val ROOT_URL = "https://pbeaocuec.com/"
+    // Shield was calibrated on the old website and might interfere with the new SPA.
+    const val ENABLE_COSMETIC_SCRIPT = false
     val DOCUMENT_START_ORIGINS: Set<String> =
         setOf("https://pbeaocuec.com")
 

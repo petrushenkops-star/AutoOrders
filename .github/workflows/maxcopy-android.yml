@@ -49,6 +49,7 @@ jobs:
         run: |
           node tests/driver-smoke.js
           node tests/site-url-smoke.js
+          node tests/site-loading-smoke.js
           node tests/ui-layout-smoke.js
           node tests/cleanup-smoke.js
           node tests/overlay-smoke.js
@@ -91,11 +92,11 @@ jobs:
           apk="app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='31' versionName='0.5.8'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.example.maxsignalcopy' versionCode='32' versionName='0.5.9'"
           verify="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
           expected="edf5ba9d6632e94fbb80271d447775e31bc17b0f5c5958923bab1bb9bf01ba69"
           printf '%s\n' "$verify" | grep -Fi "Signer #1 certificate SHA-256 digest: $expected"
-          cp "$apk" "$GITHUB_WORKSPACE/Avtosignaly-0.5.8-signed.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/Avtosignaly-0.5.9-signed.apk"
 
       - name: Publish stable signed APK to GitHub release
         env:
@@ -104,19 +105,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="autosignals-v0.5.8"
+          tag="autosignals-v0.5.9"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::notice::Release already exists. Bump versionCode and versionName to publish an update."
           else
-            gh release create "$tag" Avtosignaly-0.5.8-signed.apk --target "$GITHUB_SHA" \
-              --title "Автосигналы 0.5.8 — постоянная подпись" \
-              --notes "Новый URL: https://pbeaocuec.com/ru/futures?name=BTC/USDT&tabName=FUTURES. Адрес загружается только после предупреждения; финансовые операции заблокированы до независимой проверки домена из-за признаков фишингового риска. Подпись, данные и Telegram сохранены." \
+            gh release create "$tag" Avtosignaly-0.5.9-signed.apk --target "$GITHUB_SHA" \
+              --title "Автосигналы 0.5.9 — постоянная подпись" \
+              --notes "Добавлена диагностика загрузки SPA: HTTP, WebView и перенаправления. Поправлена загрузка вложенных страниц, включены cookies, временно отключён старый скрипт для другого сайта. Кнопки «Главная» (корневой путь) и «Браузер» помогают проверить доступность. Адрес BTC/USDT сохранён. До независимой проверки нового домена отправка заказов остаётся выключенной." \
               --prerelease
           fi
 
       - name: Preserve signed APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Avtosignaly-0.5.8-signed-apk
-          path: Avtosignaly-0.5.8-signed.apk
+          name: Avtosignaly-0.5.9-signed-apk
+          path: Avtosignaly-0.5.9-signed.apk
           if-no-files-found: error
