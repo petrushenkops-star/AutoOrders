@@ -8,8 +8,8 @@
   const slot = '__autoordersDeferredWindowProbeV1';
   const result = (status, extra={}) => JSON.stringify({status,...extra});
   if (location.protocol !== 'https:' ||
-      !(location.hostname === 'lxcompintb.com' ||
-        location.hostname.endsWith('.lxcompintb.com')) || !document.body) {
+      !(location.hostname === 'pbeaocuec.com' ||
+        location.hostname.endsWith('.pbeaocuec.com')) || !document.body) {
     return result('invalid_page');
   }
   const kind = e => {
