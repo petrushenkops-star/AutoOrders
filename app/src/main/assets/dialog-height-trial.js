@@ -8,7 +8,7 @@
   const phase='__PHASE__', slot='__autoordersHeightTrialV1';
   const reply=(status,extra={})=>JSON.stringify({status,...extra});
   const permitted=location.protocol==='https:' &&
-    (location.hostname==='lxcompintb.com' || location.hostname.endsWith('.lxcompintb.com'));
+    (location.hostname==='pbeaocuec.com' || location.hostname.endsWith('.pbeaocuec.com'));
   if(!permitted||!document.body)return reply('invalid_page');
   const visible=e=>!!e&&!!e.getClientRects().length&&
     getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden';
