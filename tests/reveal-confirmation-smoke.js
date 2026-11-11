@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const js=fs.readFileSync('app/src/main/assets/reveal-confirmation.js','utf8');
 function scenario({buttonTop=555,viewport=703,overlayZ=2005,dialogZ=2005,
-  blocked=true,host='lxcompintb.com',popupExists=true,buttonExists=true,
+  blocked=true,host='pbeaocuec.com',popupExists=true,buttonExists=true,
   blockerClass='van-overlay',buttonDisabled=false,dialogRaiseWorks=true,overlayLowerWorks=true,
   siteRaisesOverlay=false,reorderWorks=true}={}) {
   const initialOverlayZ = overlayZ, initialDialogZ = dialogZ;
