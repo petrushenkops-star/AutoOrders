@@ -12,7 +12,7 @@
     location.hostname === 'appassets.androidplatform.net' &&
     document.getElementById?.('autoorders-simulator-root')?.getAttribute('data-autoorders-simulator') === 'v1';
   const realSite = location.protocol === 'https:' &&
-    (location.hostname === 'lxcompintb.com' || location.hostname.endsWith('.lxcompintb.com'));
+    (location.hostname === 'pbeaocuec.com' || location.hostname.endsWith('.pbeaocuec.com'));
   if (!(simulated ? isolated : realSite) || !document.body) return report('invalid_page');
   try {
     const normalize = value => String(value || '').replace(/\s+/g,' ').trim().toLowerCase();
