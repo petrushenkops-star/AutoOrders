@@ -15,7 +15,7 @@ assert(site.includes('setOf("https://pbeaocuec.com")'));
 assert(site.includes('uri.getQueryParameter("name") == "BTC/USDT"'));
 assert(site.includes('uri.getQueryParameter("tabName") == "FUTURES"'));
 assert(activity.includes('browser.loadUrl(SiteConfig.HOME_URL)'));
-assert(activity.includes('!SiteConfig.accepts(request?.url)'));
+assert(activity.includes('SiteConfig.accepts(request.url)') && activity.includes('request?.isForMainFrame != true'), 'Only main frame URL is restricted');
 assert(activity.includes('!SiteConfig.accepts(browser.url.orEmpty())'));
 assert(engine.includes('private val homeUrl = SiteConfig.HOME_URL'));
 assert(engine.includes('SiteConfig.isHomePage(url)'));
