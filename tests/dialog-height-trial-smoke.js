@@ -1,7 +1,7 @@
 // The live trial must change only CSS box/stacking and restore it after use.
 const assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm');
 const source=fs.readFileSync('app/src/main/assets/dialog-height-trial.js','utf8');
-function fixture({host='lxcompintb.com',allowVisible=true,height=0}={}){
+function fixture({host='pbeaocuec.com',allowVisible=true,height=0}={}){
  let clicks=0,submits=0,requests=0;
  const props=new Map();
  const style={
