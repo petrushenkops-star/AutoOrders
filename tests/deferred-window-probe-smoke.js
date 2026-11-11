@@ -1,7 +1,7 @@
 // Staged overlay probing: no click or submit. Repeated evaluations share WebView context.
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const js=fs.readFileSync('app/src/main/assets/deferred-window-probe.js','utf8');
-function scenario(host='lxcompintb.com'){
+function scenario(host='pbeaocuec.com'){
  let painted=false,clicks=0,moves=0,restores=0;
  const parent={insertBefore(node,next){
    assert.equal(node,popup);
