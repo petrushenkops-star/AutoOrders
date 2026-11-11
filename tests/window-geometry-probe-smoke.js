@@ -1,7 +1,7 @@
 // Offline contract: geometry reads the real page without touching forms or DOM.
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const code=fs.readFileSync('app/src/main/assets/window-geometry-probe.js','utf8');
-function mock(host='lxcompintb.com'){
+function mock(host='pbeaocuec.com'){
  let clicked=0,mutations=0;
  const body={tagName:'BODY',children:[],offsetHeight:703,clientHeight:703,scrollHeight:703,
    getBoundingClientRect:()=>({left:0,top:0,right:390,bottom:703,width:390,height:703})};

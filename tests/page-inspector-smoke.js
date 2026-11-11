@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const script = fs.readFileSync('app/src/main/assets/page-inspector.js', 'utf8');
 function inspect({ bodyText='', names=[], codeField=false, secret='546789', confirmTop=320,
-                   topElementIsConfirm=true, host='lxcompintb.com' }) {
+                   topElementIsConfirm=true, host='pbeaocuec.com' }) {
   const clicks = [];
   const elements = names.map(name => ({
     innerText:name, disabled:false,

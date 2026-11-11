@@ -13,7 +13,7 @@ function test(stage, code, bodyText, buttonNames, inputNeeded, expected, clicked
   const input = {placeholder: 'Пожалуйста, введите динамический пароль', parentElement: {innerText: 'Динамический пароль'},
     value: '', getClientRects() {return [1]}, dispatchEvent() {}};
   const sandbox = {
-    location: {host: 'lxcompintb.com', protocol: 'https:'},
+    location: {host: 'pbeaocuec.com', protocol: 'https:'},
     document: {
       body: {innerText: bodyText},
       querySelectorAll(selector) {return selector.startsWith('input:') ? (inputNeeded ? [input] : []) : selector.startsWith('button, a,') ? buttons : []},

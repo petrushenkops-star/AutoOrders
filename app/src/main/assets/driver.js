@@ -1,6 +1,6 @@
 /*
  * Experimental DOM adapter based on the supplied screen recording, NOT on verified HTML.
- * Run only inside https://lxcompintb.com; stop on any ambiguous UI.
+ * Run only inside https://pbeaocuec.com; stop on any ambiguous UI.
  * All steps are idempotent at app level: no automatic replay of unknown financial results.
  */
 (function () {
@@ -30,7 +30,7 @@
   const isolated = location.protocol === 'https:' &&
     location.hostname === 'appassets.androidplatform.net' &&
     document.getElementById?.('autoorders-simulator-root')?.getAttribute('data-autoorders-simulator') === 'v1';
-  const realSite = location.host === 'lxcompintb.com' && location.protocol === 'https:';
+  const realSite = location.host === 'pbeaocuec.com' && location.protocol === 'https:';
   if (simulated ? !isolated : !realSite) return report('error', 'Неверный адрес сайта');
   if (!document.body) return report('wait', 'Загрузка страницы');
   if (/неверный ввод динамического пароля|неправильный динамический пароль/.test(text)) return report('error', 'Сайт отклонил цифровой код');

@@ -26,7 +26,7 @@ function announcement(text = 'LUMEN X', closes = [close], hasInput = false) {
     querySelectorAll: () => closes,
   };
 }
-function run(stage, {popups = [], menus = [], actions = [], text = '', blocked = [], host = 'lxcompintb.com', input = null} = {}) {
+function run(stage, {popups = [], menus = [], actions = [], text = '', blocked = [], host = 'pbeaocuec.com', input = null} = {}) {
   clicks.length = 0;
   const sandbox = {
     location: {host, hostname: host, protocol: 'https:'},

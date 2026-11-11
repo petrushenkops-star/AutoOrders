@@ -1,5 +1,5 @@
 /*
- * Read-only structure and geometry probe for https://lxcompintb.com.
+ * Read-only structure and geometry probe for https://pbeaocuec.com.
  * No clicks, input edits, network requests, secrets, or raw page contents in result.
  */
 (function () {
@@ -8,7 +8,7 @@
     location.hostname === 'appassets.androidplatform.net' &&
     document.getElementById?.('autoorders-simulator-root')?.getAttribute('data-autoorders-simulator') === 'v1';
   const realSite = location.protocol === 'https:' &&
-    (location.hostname === 'lxcompintb.com' || location.hostname.endsWith('.lxcompintb.com'));
+    (location.hostname === 'pbeaocuec.com' || location.hostname.endsWith('.pbeaocuec.com'));
   const permitted = simulated ? isolated : realSite;
   if (!permitted || !document.body) return JSON.stringify({ status: 'error' });
   try {

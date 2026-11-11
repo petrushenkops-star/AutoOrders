@@ -152,8 +152,8 @@ class SiteRunner(
                 finish(OrderStatus.ERROR, "Офлайн-страница не загружена. Сетевых запросов нет.")
                 return
             }
-        } else if (!url.startsWith("https://lxcompintb.com/")) {
-            progress("Откройте и авторизуйтесь на сайте lxcompintb.com во встроенном браузере")
+        } else if (!url.startsWith("https://pbeaocuec.com/")) {
+            progress("Откройте и авторизуйтесь на сайте pbeaocuec.com во встроенном браузере")
             handler.postDelayed({ poll() }, 1000)
             return
         }
