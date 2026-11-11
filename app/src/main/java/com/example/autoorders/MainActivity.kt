@@ -84,9 +84,9 @@ class MainActivity : ComponentActivity() {
                     val u = request?.url ?: return true
                     val host = u.host.orEmpty()
                     val permitted = u.scheme == "https" &&
-                        (host == "lxcompintb.com" || host.endsWith(".lxcompintb.com"))
+                        (host == "pbeaocuec.com" || host.endsWith(".pbeaocuec.com"))
                     if (!permitted && request?.isForMainFrame == true) {
-                        siteError = "Переход за пределы lxcompintb.com не выполняется во встроенном браузере."
+                        siteError = "Переход за пределы pbeaocuec.com не выполняется во встроенном браузере."
                     }
                     return !permitted
                 }
@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            loadUrl("https://lxcompintb.com/ru")
+            loadUrl("https://pbeaocuec.com/ru")
         }
         siteRunner = SiteRunner(siteView, { runnerStatus = it }, { outcome, detail ->
             activeOrderId?.let { store.updateOrder(it, outcome, detail) }
@@ -128,8 +128,8 @@ class MainActivity : ComponentActivity() {
     private fun inspectSite(afterFailedFix: Boolean = false) {
         val address = siteView.url.orEmpty()
         val host = Uri.parse(address).host.orEmpty()
-        if (!(host == "lxcompintb.com" || host.endsWith(".lxcompintb.com")) || !address.startsWith("https://")) {
-            siteDiagnostics = "Сначала открой сайт lxcompintb.com во встроенном браузере."
+        if (!(host == "pbeaocuec.com" || host.endsWith(".pbeaocuec.com")) || !address.startsWith("https://")) {
+            siteDiagnostics = "Сначала открой сайт pbeaocuec.com во встроенном браузере."
             return
         }
         siteDiagnostics = "Проверка элементов страницы…"
@@ -246,8 +246,8 @@ class MainActivity : ComponentActivity() {
         val address = siteView.url.orEmpty()
         val host = Uri.parse(address).host.orEmpty()
         if (!address.startsWith("https://") ||
-            !(host == "lxcompintb.com" || host.endsWith(".lxcompintb.com"))) {
-            siteDiagnostics = "Сначала открой lxcompintb.com во встроенном браузере."
+            !(host == "pbeaocuec.com" || host.endsWith(".pbeaocuec.com"))) {
+            siteDiagnostics = "Сначала открой pbeaocuec.com во встроенном браузере."
             showInspectionDialog = true
             return
         }
@@ -350,8 +350,8 @@ class MainActivity : ComponentActivity() {
         val uri=Uri.parse(initialUrl)
         val host=uri.host.orEmpty()
         if (uri.scheme!="https" ||
-            !(host=="lxcompintb.com"||host.endsWith(".lxcompintb.com"))) {
-            siteDiagnostics="Открой lxcompintb.com во встроенном браузере."
+            !(host=="pbeaocuec.com"||host.endsWith(".pbeaocuec.com"))) {
+            siteDiagnostics="Открой pbeaocuec.com во встроенном браузере."
             showInspectionDialog=true
             return
         }
@@ -474,8 +474,8 @@ class MainActivity : ComponentActivity() {
         val uri=Uri.parse(originalUrl)
         val host=uri.host.orEmpty()
         if (uri.scheme!="https" ||
-            !(host=="lxcompintb.com"||host.endsWith(".lxcompintb.com"))) {
-            siteDiagnostics="Открой окно подтверждения на lxcompintb.com."
+            !(host=="pbeaocuec.com"||host.endsWith(".pbeaocuec.com"))) {
+            siteDiagnostics="Открой окно подтверждения на pbeaocuec.com."
             showInspectionDialog=true
             return
         }
@@ -579,8 +579,8 @@ class MainActivity : ComponentActivity() {
         val uri=Uri.parse(url)
         val host=uri.host.orEmpty()
         if (uri.scheme!="https" ||
-            !(host=="lxcompintb.com"||host.endsWith(".lxcompintb.com"))) {
-            siteDiagnostics="Открой окно подтверждения на lxcompintb.com."
+            !(host=="pbeaocuec.com"||host.endsWith(".pbeaocuec.com"))) {
+            siteDiagnostics="Открой окно подтверждения на pbeaocuec.com."
             showInspectionDialog=true
             return
         }
@@ -863,7 +863,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.statusBarsPadding(), tonalElevation = 3.dp) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text("Автозаказы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Версия ${packageManager.getPackageInfo(packageName, 0).versionName} • lxcompintb.com",
+                        Text("Версия ${packageManager.getPackageInfo(packageName, 0).versionName} • pbeaocuec.com",
                             style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -1086,13 +1086,13 @@ class MainActivity : ComponentActivity() {
                             }, enabled = !runnerActive) { Text("Обновить") }
                             OutlinedButton(onClick = {
                                 siteError = null
-                                siteView.loadUrl("https://lxcompintb.com/ru")
+                                siteView.loadUrl("https://pbeaocuec.com/ru")
                             }, enabled = !runnerActive) { Text("Главная") }
                         }
                         OutlinedButton(onClick = {
                             val chromeIntent = Intent(
                                 Intent.ACTION_VIEW,
-                                Uri.parse("https://lxcompintb.com/ru")
+                                Uri.parse("https://pbeaocuec.com/ru")
                             ).apply {
                                 setPackage("com.android.chrome")
                             }
