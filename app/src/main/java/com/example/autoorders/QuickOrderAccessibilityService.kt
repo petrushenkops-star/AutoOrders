@@ -18,12 +18,14 @@ object QuickOrderSession {
     @Volatile var code = ""
     val message = mutableStateOf("Готово к работе")
     @Volatile var lastActionAt = 0L
+    @Volatile var startedAt = 0L
 
     fun begin(value: String) {
         code = value
         step = Step.OPEN_COPY
         lastActionAt = 0L
-        message.value = "Откройте страницу аккаунта в Chrome"
+        startedAt = System.currentTimeMillis()
+        message.value = "Автоматизация запущена. Ищу «Быстрое копирование» в Chrome"
     }
     fun finish(text: String, success: Boolean) {
         code = ""
@@ -54,10 +56,9 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         handler.post(poll)
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.packageName?.toString() != "com.android.chrome") return
-        if (!running) return
-        handler.removeCallbacks(poll)
-        handler.postDelayed(poll, 350L)
+        // Do not reset a pending poll on every content-change event:
+        // a busy SPA can emit these events continuously and starve the runner.
+        // The periodic poll is the sole scheduler.
     }
     override fun onInterrupt() { QuickOrderSession.cancel() }
     override fun onDestroy() {
@@ -71,8 +72,19 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         val state = QuickOrderSession.step
         if (state == QuickOrderSession.Step.IDLE || state == QuickOrderSession.Step.DONE ||
             state == QuickOrderSession.Step.ERROR) return
-        val root = rootInActiveWindow ?: return
-        if (root.packageName?.toString() != "com.android.chrome") return
+        if (System.currentTimeMillis() - QuickOrderSession.startedAt > 60000L) {
+            QuickOrderSession.finish(
+                "За 60 секунд нужные элементы не найдены. Откройте нужный раздел сайта и повторите.", false)
+            return
+        }
+        val root = rootInActiveWindow ?: run {
+            QuickOrderSession.message.value = "Нет доступа к дереву окна Chrome. Проверьте службу специальных возможностей."
+            return
+        }
+        if (root.packageName?.toString() != "com.android.chrome") {
+            QuickOrderSession.message.value = "Ожидаю активное окно Chrome"
+            return
+        }
         if (System.currentTimeMillis() - QuickOrderSession.lastActionAt < 1100) return
         try {
             when (state) {
@@ -81,10 +93,20 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                     val target = findText(root, "Быстрое копирование")
                     if (target != null && click(target)) {
                         move(QuickOrderSession.Step.ENTER_CODE, "Открываю «Быстрое копирование»")
+                    } else if (target == null) {
+                        QuickOrderSession.message.value =
+                            "Кнопка «Быстрое копирование» не видна в Chrome. Откройте меню сайта вручную."
+                    } else {
+                        QuickOrderSession.message.value =
+                            "Кнопка найдена, но Android не разрешает нажатие. Нажмите её вручную."
                     }
                 }
                 QuickOrderSession.Step.ENTER_CODE -> {
                     val input = findEditable(root)
+                    if (input == null) {
+                        QuickOrderSession.message.value =
+                            "Не найдено поле кода. Откройте форму ввода в Chrome."
+                    }
                     if (input != null && input.isEnabled && input.isEditable) {
                         val args = Bundle().apply {
                             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
