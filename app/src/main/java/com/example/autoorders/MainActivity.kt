@@ -12,6 +12,11 @@ import android.os.Bundle
 import android.provider.Settings
 import android.net.Uri
 import android.webkit.WebSettings
+import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.ConsoleMessage
+import android.graphics.Bitmap
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
@@ -56,6 +61,8 @@ class MainActivity : ComponentActivity() {
     private var logUpdate by mutableStateOf(0)
     private var runnerStatus by mutableStateOf("Автоматизация не запущена")
     private var siteError by mutableStateOf<String?>(null)
+    private var siteLoadStatus by mutableStateOf("Открываю сайт…")
+    private var siteLoadPercent by mutableIntStateOf(0)
     private var siteDiagnostics by mutableStateOf("Диагностика ещё не выполнялась")
     private var showInspectionDialog by mutableStateOf(false)
     private var siteWindowTestActive by mutableStateOf(false)
@@ -77,16 +84,53 @@ class MainActivity : ComponentActivity() {
         siteView = WebView(this).apply {
             settings.javaScriptEnabled = true // Required for the site's SPA and our DOM driver.
             settings.domStorageEnabled = true
+            settings.databaseEnabled = true
+            settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.setSupportMultipleWindows(false)
+            CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                    siteLoadPercent = newProgress
+                    if (newProgress < 100 && siteError == null) {
+                        siteLoadStatus = "Загрузка страницы: $newProgress%"
+                    }
+                }
+                override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
+                    if (message?.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
+                        siteError == null) {
+                        val detail = message.message().take(180)
+                        siteLoadStatus = "Ошибка JavaScript: $detail"
+                    }
+                    return false
+                }
+            }
             webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                    siteError = null
+                    siteLoadStatus = "Открываю страницу: ${android.net.Uri.parse(url).host.orEmpty()}"
+                    siteLoadPercent = 0
+                }
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    if (siteError == null && !siteLoadStatus.startsWith("Ошибка JavaScript")) {
+                        siteLoadStatus = "WebView завершил загрузку документа. Если виден индикатор сайта, возможно, не загрузились его данные."
+                    }
+                }
+                override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: WebResourceResponse?) {
+                    if (request?.isForMainFrame == true) {
+                        siteError = "HTTP ${errorResponse?.statusCode ?: "?"} при загрузке страницы"
+                    } else if (siteError == null && request?.url?.host?.contains("pbeaocuec.com") == true) {
+                        siteLoadStatus = "Ошибка ресурса сайта: HTTP ${errorResponse?.statusCode ?: "?"}"
+                    }
+                }
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val u = request?.url ?: return true
                     val host = u.host.orEmpty()
                     val permitted = u.scheme == "https" &&
                         (host == "pbeaocuec.com" || host.endsWith(".pbeaocuec.com"))
                     if (!permitted && request?.isForMainFrame == true) {
-                        siteError = "Переход за пределы pbeaocuec.com не выполняется во встроенном браузере."
+                        siteError = "Сайт перенаправил браузер на $host. Переход заблокирован настройками приложения."
                     }
                     return !permitted
                 }
@@ -1067,6 +1111,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Text(runnerStatus, style = MaterialTheme.typography.bodySmall)
+                        Text(siteLoadStatus, style = MaterialTheme.typography.bodySmall)
                         if (siteError != null) {
                             Text(
                                 siteError ?: "",
