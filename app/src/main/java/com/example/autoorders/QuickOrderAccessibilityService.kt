@@ -1,6 +1,9 @@
 package com.example.autoorders
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.Rect
 import android.view.accessibility.AccessibilityWindowInfo
 import android.os.Bundle
 import android.os.Handler
@@ -45,6 +48,7 @@ object QuickOrderSession {
 class QuickOrderAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
+    private var gesturePending = false
     private val poll = object : Runnable {
         override fun run() {
             if (!running) return
@@ -105,20 +109,24 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                 "Проверьте разрешение специальных возможностей."
             return
         }
-        if (System.currentTimeMillis() - QuickOrderSession.lastActionAt < 1100) return
+        if (gesturePending || System.currentTimeMillis() - QuickOrderSession.lastActionAt < 1100) return
         try {
             when (state) {
                 QuickOrderSession.Step.OPEN_COPY -> {
-                    // The code can only be entered once the user is signed into the site.
-                    val target = findText(root, "Быстрое копирование")
-                    if (target != null && click(target)) {
-                        move(QuickOrderSession.Step.ENTER_CODE, "Открываю «Быстрое копирование»")
-                    } else if (target == null) {
-                        QuickOrderSession.message.value =
-                            "Кнопка «Быстрое копирование» не видна в Chrome. Откройте меню сайта вручную."
+                    // The site may already be showing the code form: do not click
+                    // a second "quick copy" element, which might be an order action.
+                    if (findWebsiteCodeFields(root).size == 1) {
+                        move(QuickOrderSession.Step.ENTER_CODE, "Форма кода открыта")
                     } else {
-                        QuickOrderSession.message.value =
-                            "Кнопка найдена, но Android не разрешает нажатие. Нажмите её вручную."
+                        val buttons = findWebsiteActions(root, listOf("Быстрое копирование"))
+                        when (buttons.size) {
+                            0 -> QuickOrderSession.message.value =
+                                "Не найдена кнопка перехода к форме кода в Chrome"
+                            1 -> pressOnce(buttons.single(), QuickOrderSession.Step.ENTER_CODE,
+                                "Нажата кнопка открытия формы")
+                            else -> QuickOrderSession.message.value =
+                                "Найдено несколько кнопок «Быстрое копирование». Нажатие отменено"
+                        }
                     }
                 }
                 QuickOrderSession.Step.ENTER_CODE -> {
@@ -157,10 +165,16 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                             "Поле сайта изменилось или код не подтверждён. Автоматическая отправка отменена.", false)
                         return
                     }
-                    val submit = findText(root, "Отправлять")
-                    if (submit != null && submit.isEnabled && click(submit)) {
-                        // No automatic re-click, even if the network result is uncertain.
-                        move(QuickOrderSession.Step.WAIT_DETAILS, "Код отправлен, ожидаю страницу")
+                    // The screenshot labels vary between "Отправить" and
+                    // "Отправлять". Never click multiple candidates or retry.
+                    val buttons = findWebsiteActions(root, listOf("Отправить", "Отправлять"))
+                    when (buttons.size) {
+                        0 -> QuickOrderSession.message.value =
+                            "Код введён. Кнопка отправки не обнаружена в форме сайта"
+                        1 -> pressOnce(buttons.single(), QuickOrderSession.Step.WAIT_DETAILS,
+                            "Нажата «Отправить» один раз; ожидаю ответ сайта")
+                        else -> QuickOrderSession.message.value =
+                            "Несколько кнопок отправки. Автонажатие отменено"
                     }
                 }
                 QuickOrderSession.Step.WAIT_DETAILS -> {
@@ -170,12 +184,11 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                     }
                 }
                 QuickOrderSession.Step.OPEN_DETAILS -> {
-                    val copy = findText(root, "Быстрое копирование")
-                    if (copy != null && click(copy)) {
-                        QuickOrderSession.finish(
-                            "Действия из видео выполнены. Подтверждение финансового заказа оставлено пользователю.",
-                            true)
-                    }
+                    // Never auto-press a second "quick copy" action on an order
+                    // screen: it may execute a financial transaction.
+                    QuickOrderSession.finish(
+                        "Детали заказа открыты. Финальное финансовое действие выполните вручную.",
+                        true)
                 }
                 else -> Unit
             }
@@ -233,14 +246,102 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         }
         return candidates
     }
-    private fun click(node: AccessibilityNodeInfo): Boolean {
+    /**
+     * Resolve labels only inside Chrome's website tree. If the text belongs
+     * to a child span, its closest actionable ancestor is selected.
+     * Duplicate labels that refer to the same button count as one.
+     */
+    private fun findWebsiteActions(
+        root: AccessibilityNodeInfo, labels: List<String>
+    ): List<AccessibilityNodeInfo> {
+        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Boolean>>()
+        queue.add(root to false)
+        val result = mutableListOf<AccessibilityNodeInfo>()
+        val seenBounds = mutableSetOf<String>()
+        var visited = 0
+        while (queue.isNotEmpty() && visited++ < 1600) {
+            val (node, parentWeb) = queue.removeFirst()
+            val type = node.className?.toString().orEmpty()
+            val resourceId = node.viewIdResourceName.orEmpty()
+            val chromeUi = resourceId.startsWith("com.android.chrome:id/") ||
+                resourceId.contains("url_bar", ignoreCase = true)
+            val inWeb = parentWeb || type.contains("WebView", ignoreCase = true)
+            if (inWeb && !chromeUi && node.isVisibleToUser) {
+                val text = node.text?.toString()?.trim().orEmpty()
+                val desc = node.contentDescription?.toString()?.trim().orEmpty()
+                if (labels.any { text.equals(it, ignoreCase = true) ||
+                        desc.equals(it, ignoreCase = true) }) {
+                    var target = node
+                    var current = node.parent
+                    var hops = 0
+                    while (!target.isClickable && current != null && hops++ < 5) {
+                        if (current.className?.toString()?.contains("WebView", true) == true) break
+                        target = current
+                        current = current.parent
+                    }
+                    if (target.isEnabled && target.isVisibleToUser) {
+                        val b = Rect()
+                        target.getBoundsInScreen(b)
+                        if (!b.isEmpty) {
+                            val key = "${b.left}:${b.top}:${b.right}:${b.bottom}"
+                            if (seenBounds.add(key)) result.add(target)
+                        }
+                    }
+                }
+            }
+            if (!chromeUi) for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.addLast(it to inWeb) }
+            }
+        }
+        return result
+    }
+
+    /**
+     * One attempt per stage. Android accessibility actions often fail on
+     * virtual HTML buttons; a single on-screen gesture is the fallback.
+     */
+    private fun pressOnce(
+        node: AccessibilityNodeInfo,
+        next: QuickOrderSession.Step,
+        status: String
+    ) {
+        // First try semantic ACTION_CLICK, also allowing clickable ancestors.
         var current: AccessibilityNodeInfo? = node
         var hops = 0
-        while (current != null && hops++ < 8) {
-            if (current.isClickable && current.isEnabled &&
-                current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+        while (current != null && hops++ < 6) {
+            if (current.isEnabled && current.isClickable &&
+                current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                move(next, status)
+                return
+            }
+            if (current.className?.toString()?.contains("WebView", true) == true) break
             current = current.parent
         }
-        return false
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        if (rect.isEmpty || rect.width() < 6 || rect.height() < 6) {
+            QuickOrderSession.message.value = "Кнопка найдена, но её границы недоступны"
+            return
+        }
+        gesturePending = true
+        val tap = Path().apply { moveTo(rect.exactCenterX(), rect.exactCenterY()) }
+        val stroke = GestureDescription.StrokeDescription(tap, 0L, 90L)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        val submitted = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                gesturePending = false
+                move(next, status)
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                gesturePending = false
+                // The tap may already have reached Chrome before cancellation.
+                // Do not automatically retry, which could double-submit.
+                QuickOrderSession.finish("Нажатие отменено Android. Проверьте результат вручную.", false)
+            }
+        }, handler)
+        if (!submitted) {
+            gesturePending = false
+            QuickOrderSession.finish("Android не разрешил нажать кнопку. Повтор не выполняется.", false)
+        }
     }
 }
