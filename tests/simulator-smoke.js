@@ -93,7 +93,7 @@ assert.equal(probe("appassets.androidplatform.net",true,true).status,"wait");
 assert.equal(probe("appassets.androidplatform.net",false,true).status,"error");
 assert.equal(probe("appassets.androidplatform.net",true,false).status,"error");
 assert.equal(probe("lxcompintb.com",true,true).status,"error");
-assert.equal(probe("lxcompintb.com",false,false).status,"wait");
+assert.equal(probe("pbeaocuec.com",false,false).status,"wait");
 const kotlin=fs.readFileSync("app/src/main/java/com/example/autoorders/SimulatorActivity.kt","utf8");
 assert.match(kotlin,/blockNetworkLoads = true/);
 assert.match(kotlin,/allowFileAccess = false/);
