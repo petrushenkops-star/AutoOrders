@@ -1,6 +1,7 @@
 package com.example.autoorders
 
 import android.accessibilityservice.AccessibilityService
+import android.view.accessibility.AccessibilityWindowInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +20,8 @@ object QuickOrderSession {
     val message = mutableStateOf("Готово к работе")
     @Volatile var lastActionAt = 0L
     @Volatile var startedAt = 0L
+    @Volatile var serviceConnected = false
+    @Volatile var observedChromeEvents = 0
 
     fun begin(value: String) {
         code = value
@@ -53,9 +56,13 @@ class QuickOrderAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         running = true
+        QuickOrderSession.serviceConnected = true
         handler.post(poll)
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.packageName?.toString() == "com.android.chrome") {
+            QuickOrderSession.observedChromeEvents++
+        }
         // Do not reset a pending poll on every content-change event:
         // a busy SPA can emit these events continuously and starve the runner.
         // The periodic poll is the sole scheduler.
@@ -63,6 +70,7 @@ class QuickOrderAccessibilityService : AccessibilityService() {
     override fun onInterrupt() { QuickOrderSession.cancel() }
     override fun onDestroy() {
         running = false
+        QuickOrderSession.serviceConnected = false
         handler.removeCallbacksAndMessages(null)
         QuickOrderSession.cancel()
         super.onDestroy()
@@ -77,12 +85,24 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                 "За 60 секунд нужные элементы не найдены. Откройте нужный раздел сайта и повторите.", false)
             return
         }
-        val root = rootInActiveWindow ?: run {
-            QuickOrderSession.message.value = "Нет доступа к дереву окна Chrome. Проверьте службу специальных возможностей."
-            return
+        // Some Android/Chrome versions return null for rootInActiveWindow
+        // while an interactive window root is accessible via getWindows().
+        val activeRoot = rootInActiveWindow
+        val chromeWindowRoots = windows.orEmpty().mapNotNull { window ->
+            if (window.type == AccessibilityWindowInfo.TYPE_APPLICATION) window.root else null
+        }.filter { it.packageName?.toString() == "com.android.chrome" }
+        val root = when {
+            activeRoot?.packageName?.toString() == "com.android.chrome" -> activeRoot
+            else -> chromeWindowRoots.firstOrNull()
         }
-        if (root.packageName?.toString() != "com.android.chrome") {
-            QuickOrderSession.message.value = "Ожидаю активное окно Chrome"
+        if (root == null) {
+            val active = activeRoot?.packageName?.toString().orEmpty().ifEmpty { "нет" }
+            val connection = if (QuickOrderSession.serviceConnected) "подключена" else "не подключена"
+            QuickOrderSession.message.value =
+                "Chrome не предоставил доступ к элементам страницы. " +
+                "Служба: $connection; активное окно: $active; " +
+                "окон Chrome: ${chromeWindowRoots.size}; событий: ${QuickOrderSession.observedChromeEvents}. " +
+                "Проверьте разрешение специальных возможностей."
             return
         }
         if (System.currentTimeMillis() - QuickOrderSession.lastActionAt < 1100) return
