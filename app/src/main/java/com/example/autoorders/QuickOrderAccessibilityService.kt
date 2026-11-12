@@ -102,10 +102,14 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                     }
                 }
                 QuickOrderSession.Step.ENTER_CODE -> {
-                    val input = findEditable(root)
+                    val inputs = findWebsiteCodeFields(root)
+                    val input = inputs.singleOrNull()
                     if (input == null) {
-                        QuickOrderSession.message.value =
-                            "Не найдено поле кода. Откройте форму ввода в Chrome."
+                        QuickOrderSession.message.value = if (inputs.isEmpty()) {
+                            "Поле динамического кода внутри сайта не найдено. Адресная строка Chrome исключена. Откройте форму кода вручную."
+                        } else {
+                            "На странице несколько подходящих полей кода. Автоввод отменён во избежание ошибки."
+                        }
                     }
                     if (input != null && input.isEnabled && input.isEditable) {
                         val args = Bundle().apply {
@@ -113,11 +117,26 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                                 QuickOrderSession.code)
                         }
                         if (input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-                            move(QuickOrderSession.Step.SEND_CODE, "Код введён")
+                            // Do not send until we have observed the expected code
+                            // in the same website field, not Chrome's address bar.
+                            if (input.text?.toString() == QuickOrderSession.code) {
+                                move(QuickOrderSession.Step.SEND_CODE, "Код введён в поле сайта")
+                            } else {
+                                QuickOrderSession.finish(
+                                    "Не удалось проверить введённый код в поле сайта. Отправка отменена.", false)
+                            }
+                        } else {
+                            QuickOrderSession.finish("Сайт не разрешил ввод в поле кода. Отправка отменена.", false)
                         }
                     }
                 }
                 QuickOrderSession.Step.SEND_CODE -> {
+                    val verified = findWebsiteCodeFields(root).singleOrNull()
+                    if (verified == null || verified.text?.toString() != QuickOrderSession.code) {
+                        QuickOrderSession.finish(
+                            "Поле сайта изменилось или код не подтверждён. Автоматическая отправка отменена.", false)
+                        return
+                    }
                     val submit = findText(root, "Отправлять")
                     if (submit != null && submit.isEnabled && click(submit)) {
                         // No automatic re-click, even if the network result is uncertain.
@@ -165,17 +184,34 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         }
         return null
     }
-    private fun findEditable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val queue = ArrayDeque<AccessibilityNodeInfo>()
-        queue.add(root)
+    /**
+     * Chrome's URL field is an ordinary editable AccessibilityNodeInfo but
+     * MUST NEVER be treated as a webpage input. Only virtual HTML elements
+     * that descend from a WebView are candidates. Refuse ambiguous pages.
+     */
+    private fun findWebsiteCodeFields(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Boolean>>()
+        queue.add(root to false)
         var seen = 0
-        while (queue.isNotEmpty() && seen++ < 1200) {
-            val n = queue.removeFirst()
-            if (n.isVisibleToUser && n.isEditable &&
-                n.className?.toString()?.contains("EditText") == true) return n
-            for (i in 0 until n.childCount) n.getChild(i)?.let(queue::addLast)
+        while (queue.isNotEmpty() && seen++ < 1500) {
+            val (n, withinWebView) = queue.removeFirst()
+            val className = n.className?.toString().orEmpty()
+            val id = n.viewIdResourceName.orEmpty()
+            val inWebsite = withinWebView || className.contains("WebView", ignoreCase = true)
+            val chromeControl = id.startsWith("com.android.chrome:id/") ||
+                id.contains("url_bar", ignoreCase = true) ||
+                className.contains("Omnibox", ignoreCase = true)
+            if (inWebsite && !chromeControl && n.isVisibleToUser && n.isEnabled &&
+                n.isEditable && (className.contains("EditText") ||
+                    className.contains("input", ignoreCase = true))) {
+                candidates.add(n)
+            }
+            for (i in 0 until n.childCount) {
+                n.getChild(i)?.let { queue.addLast(it to (inWebsite && !chromeControl)) }
+            }
         }
-        return null
+        return candidates
     }
     private fun click(node: AccessibilityNodeInfo): Boolean {
         var current: AccessibilityNodeInfo? = node
