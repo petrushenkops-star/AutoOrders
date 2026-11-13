@@ -199,9 +199,9 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                     val input = inputs.singleOrNull()
                     if (input == null) {
                         QuickOrderSession.message.value = if (inputs.isEmpty()) {
-                            "Поле динамического кода внутри сайта не найдено. Адресная строка Chrome исключена. Откройте форму кода вручную."
+                            "Форма «Динамический пароль» видна, но поле ввода не предоставлено Chrome для Accessibility. Адресная строка исключена; ввод отменён."
                         } else {
-                            "На странице несколько подходящих полей кода. Автоввод отменён во избежание ошибки."
+                            "Chrome показал ${inputs.size} возможных полей. Выбор неоднозначен, ввод отменён."
                         }
                     }
                     if (input != null && input.isEnabled && input.isEditable) {
@@ -299,32 +299,52 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         findText(root, "Динамический пароль") != null ||
         findText(root, "Динамический код") != null
 
-    /** Recognize MIUI Chrome's website text fields even when WebView nodes are absent. */
+    /**
+     * The code page is a separate Chrome document: /ru/mer...
+     * MIUI may present its HTML input without a WebView class or isEditable.
+     * Never select a toolbar element, another site or an ambiguous field.
+     */
     private fun findWebsiteCodeFields(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-        val dialogVisible = isCodeDialogVisible(root)
+        if (!isCodeDialogVisible(root)) return emptyList()
         val candidates = mutableListOf<AccessibilityNodeInfo>()
-        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Boolean>>()
-        queue.add(root to false)
-        var seen = 0
-        while (queue.isNotEmpty() && seen++ < 1600) {
-            val (n, withinWebView) = queue.removeFirst()
-            val type = n.className?.toString().orEmpty()
-            val id = n.viewIdResourceName.orEmpty()
-            val inWeb = withinWebView || type.contains("WebView", ignoreCase = true)
-            val browserUi = id.startsWith("com.android.chrome:id/") ||
-                id.contains("url_bar", ignoreCase = true) ||
-                type.contains("Omnibox", ignoreCase = true)
-            val textInput = type.contains("EditText") || type.contains("input", true)
-            if (!browserUi && n.isVisibleToUser && n.isEnabled && n.isEditable &&
-                textInput && (inWeb || dialogVisible)) {
-                val rect = Rect()
-                n.getBoundsInScreen(rect)
-                if (!rect.isEmpty && rect.width() > 60 && rect.height() > 18) {
-                    candidates.add(n)
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var inspected = 0
+        while (queue.isNotEmpty() && inspected++ < 1800) {
+            val node = queue.removeFirst()
+            val type = node.className?.toString().orEmpty()
+            val resourceId = node.viewIdResourceName.orEmpty()
+            val hint = node.hintText?.toString().orEmpty()
+            val description = node.contentDescription?.toString().orEmpty()
+            val text = node.text?.toString().orEmpty()
+            val addressBar = resourceId.startsWith("com.android.chrome:id/") ||
+                resourceId.contains("url_bar", true) ||
+                type.contains("Omnibox", true)
+            val textAction = node.actionList.any {
+                it.id == AccessibilityNodeInfo.ACTION_SET_TEXT
+            }
+            val dynamicHint = listOf(hint, description, text).any {
+                it.contains("динамическ", true) ||
+                    it.contains("password", true)
+            }
+            val inputKind = type.contains("EditText", true) ||
+                type.contains("input", true) || node.isEditable
+            if (!addressBar && node.isVisibleToUser && node.isEnabled &&
+                (node.isEditable || textAction) && (inputKind || dynamicHint)) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                val rootBounds = Rect()
+                root.getBoundsInScreen(rootBounds)
+                // Exclude browser navigation bars and outside-page controls.
+                if (!bounds.isEmpty && bounds.width() > 80 &&
+                    bounds.height() > 20 &&
+                    bounds.centerY() > rootBounds.top + rootBounds.height() * 0.18f &&
+                    bounds.centerY() < rootBounds.bottom - rootBounds.height() * 0.12f) {
+                    candidates.add(node)
                 }
             }
-            if (!browserUi) for (i in 0 until n.childCount) {
-                n.getChild(i)?.let { queue.addLast(it to inWeb) }
+            if (!addressBar) for (i in 0 until node.childCount) {
+                node.getChild(i)?.let(queue::addLast)
             }
         }
         return candidates
