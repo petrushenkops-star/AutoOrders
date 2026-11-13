@@ -165,20 +165,26 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                                 // not identify HTML text as a WebView descendant.
                                 // The fallback still uses the exact text's screen
                                 // bounds, and only on the BTC/USDT trading screen.
-                                val isTradingScreen = findText(root, "BTC/USDT") != null &&
-                                    findText(root, "Купить вниз") != null
-                                val label = if (isTradingScreen) {
-                                    findText(root, "Быстрое копирование")
-                                } else null
                                 val pageBounds = findWebViewBounds(root)
+                                val label = findText(root, "Быстрое копирование")
+                                val tradingTitle = findText(root, "BTC/USDT") != null ||
+                                    findText(root, "BTCUSDT") != null
                                 if (label != null && pageBounds != null &&
                                     isWithinPage(label, pageBounds)) {
                                     pressOnce(label, QuickOrderSession.Step.ENTER_CODE,
                                         "Нажата «Быстрое копирование» на странице BTC/USDT")
+                                } else if (tradingTitle && pageBounds != null &&
+                                    isExpectedTradingUrl(root)) {
+                                    // Fallback based on the confirmed mobile BTC/USDT
+                                    // screenshot: this wide blue button is 75% down
+                                    // the website viewport. At most one gesture.
+                                    tapQuickCopyOnTradingScreen(pageBounds)
                                 } else {
                                     QuickOrderSession.message.value =
-                                        "Кнопка «Быстрое копирование» не распознана в содержимом страницы BTC/USDT. " +
-                                        "Ожидаю доступную кнопку; случайные касания не выполняются."
+                                        "Кнопка не найдена. Диагностика: BTC/USDT=${tradingTitle}; " +
+                                        "WebView=${pageBounds != null}; адрес торговой страницы=" +
+                                        isExpectedTradingUrl(root) +
+                                        ". Нажатие отменено. Пришлите это сообщение."
                                 }
                             }
                             1 -> pressOnce(buttons.single(), QuickOrderSession.Step.ENTER_CODE,
@@ -384,6 +390,62 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         node.getBoundsInScreen(bounds)
         return !bounds.isEmpty && page.contains(bounds.centerX(), bounds.centerY()) &&
             bounds.centerY() > page.top + 25
+    }
+
+    /**
+     * Website and chart heading must match before attempting a fallback gesture.
+     * Never trust URL bar position or visit a different domain.
+     */
+    private fun isExpectedTradingUrl(root: AccessibilityNodeInfo): Boolean {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var scanned = 0
+        while (queue.isNotEmpty() && scanned++ < 1600) {
+            val node = queue.removeFirst()
+            val label = node.text?.toString().orEmpty() + " " +
+                node.contentDescription?.toString().orEmpty()
+            if (label.contains("pbeaocuec.com", ignoreCase = true) &&
+                (label.contains("/ru/fut", ignoreCase = true) ||
+                    label.contains("/futures", ignoreCase = true))) return true
+            for (i in 0 until node.childCount) node.getChild(i)?.let(queue::addLast)
+        }
+        return false
+    }
+
+    private fun tapQuickCopyOnTradingScreen(page: Rect) {
+        val x = page.exactCenterX()
+        val y = page.top + page.height() * 0.75f
+        if (page.height() < 650 || page.width() < 300 ||
+            y < page.top + page.height() * 0.65f ||
+            y > page.bottom - page.height() * 0.15f) {
+            QuickOrderSession.message.value =
+                "Нестандартные размеры торгового экрана. Автоматическое касание отменено."
+            return
+        }
+        // A gesture is a one-shot navigation attempt, not proof the page changed.
+        gesturePending = true
+        val path = Path().apply { moveTo(x, y) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, 95L)).build()
+        val launched = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                gesturePending = false
+                if (QuickOrderSession.step == QuickOrderSession.Step.OPEN_COPY) {
+                    move(QuickOrderSession.Step.ENTER_CODE,
+                        "Один раз нажата область «Быстрое копирование». Ожидаю появление формы кода.")
+                }
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                gesturePending = false
+                QuickOrderSession.finish(
+                    "Android отменил касание «Быстрое копирование». Повтора не будет.", false)
+            }
+        }, handler)
+        if (!launched) {
+            gesturePending = false
+            QuickOrderSession.finish(
+                "Android не разрешил касание «Быстрое копирование». Повтора не будет.", false)
+        }
     }
 
     /**
