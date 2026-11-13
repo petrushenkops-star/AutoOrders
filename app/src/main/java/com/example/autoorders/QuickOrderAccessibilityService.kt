@@ -17,7 +17,7 @@ import androidx.compose.runtime.mutableStateOf
  * sends details to a network endpoint. Never confirms a financial order.
  */
 object QuickOrderSession {
-    enum class Step { IDLE, OPEN_COPY, ENTER_CODE, SEND_CODE, WAIT_DETAILS, OPEN_DETAILS, DONE, ERROR }
+    enum class Step { IDLE, OPEN_TRADE, OPEN_COPY, ENTER_CODE, SEND_CODE, WAIT_DETAILS, OPEN_DETAILS, DONE, ERROR }
     @Volatile var step = Step.IDLE
     @Volatile var code = ""
     val message = mutableStateOf("Готово к работе")
@@ -28,10 +28,10 @@ object QuickOrderSession {
 
     fun begin(value: String) {
         code = value
-        step = Step.OPEN_COPY
+        step = Step.OPEN_TRADE
         lastActionAt = 0L
         startedAt = System.currentTimeMillis()
-        message.value = "Автоматизация запущена. Ищу «Быстрое копирование» в Chrome"
+        message.value = "Автоматизация запущена. Ищу вкладку «Торговля» в Chrome"
     }
     fun finish(text: String, success: Boolean) {
         code = ""
@@ -112,6 +112,19 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         if (gesturePending || System.currentTimeMillis() - QuickOrderSession.lastActionAt < 1100) return
         try {
             when (state) {
+                QuickOrderSession.Step.OPEN_TRADE -> {
+                    // Navigate using the bottom tab shown in the user's video.
+                    // Only one distinct visible website control is safe to press.
+                    val buttons = findWebsiteActions(root, listOf("Торговля"))
+                    when (buttons.size) {
+                        0 -> QuickOrderSession.message.value =
+                            "Не найдена вкладка «Торговля». Проверьте, что открыта главная страница сайта"
+                        1 -> pressOnce(buttons.single(), QuickOrderSession.Step.OPEN_COPY,
+                            "Нажата вкладка «Торговля», ищу форму кода")
+                        else -> QuickOrderSession.message.value =
+                            "Обнаружено несколько кнопок «Торговля». Автонажатие отменено"
+                    }
+                }
                 QuickOrderSession.Step.OPEN_COPY -> {
                     // The site may already be showing the code form: do not click
                     // a second "quick copy" element, which might be an order action.
