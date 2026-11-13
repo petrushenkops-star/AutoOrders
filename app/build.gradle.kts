@@ -17,8 +17,8 @@ android {
         applicationId = "com.example.autoorders"
         minSdk = 26
         targetSdk = 35
-        versionCode = 42
-        versionName = "0.2.5"
+        versionCode = 43
+        versionName = "0.2.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
