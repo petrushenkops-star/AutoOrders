@@ -94,6 +94,7 @@ class QuickOrderActivity : ComponentActivity() {
                         },
                         enabled = code.isNotBlank() &&
                             QuickOrderSession.step !in listOf(
+                                QuickOrderSession.Step.OPEN_TRADE,
                                 QuickOrderSession.Step.OPEN_COPY,
                                 QuickOrderSession.Step.ENTER_CODE,
                                 QuickOrderSession.Step.SEND_CODE,
