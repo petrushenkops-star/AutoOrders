@@ -155,8 +155,8 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                     // Only skip this button if the code form is visibly identified.
                     val codeFormVisible = findText(root, "Динамический пароль") != null ||
                         findText(root, "Динамический код") != null
-                    if (codeFormVisible && findWebsiteCodeFields(root).size == 1) {
-                        move(QuickOrderSession.Step.ENTER_CODE, "Форма динамического кода открыта")
+                    if (codeFormVisible) {
+                        move(QuickOrderSession.Step.ENTER_CODE, "Форма кода обнаружена, ищу поле ввода")
                     } else {
                         val buttons = findWebsiteActions(root, listOf("Быстрое копирование"))
                         when (buttons.size) {
@@ -232,7 +232,13 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                     }
                     // The screenshot labels vary between "Отправить" and
                     // "Отправлять". Never click multiple candidates or retry.
-                    val buttons = findWebsiteActions(root, listOf("Отправить", "Отправлять"))
+                    if (!isCodeDialogVisible(root)) {
+                        QuickOrderSession.finish("Форма кода не подтверждена. Отправка отменена.", false)
+                        return
+                    }
+                    val primaryButtons = findWebsiteActions(root, listOf("Отправить", "Отправлять"))
+                    val buttons = if (primaryButtons.isNotEmpty()) primaryButtons else
+                        findExactTextActions(root, listOf("Отправить", "Отправлять"))
                     when (buttons.size) {
                         0 -> QuickOrderSession.message.value =
                             "Код введён. Кнопка отправки не обнаружена в форме сайта"
@@ -288,26 +294,37 @@ class QuickOrderAccessibilityService : AccessibilityService() {
      * MUST NEVER be treated as a webpage input. Only virtual HTML elements
      * that descend from a WebView are candidates. Refuse ambiguous pages.
      */
+
+    private fun isCodeDialogVisible(root: AccessibilityNodeInfo): Boolean =
+        findText(root, "Динамический пароль") != null ||
+        findText(root, "Динамический код") != null
+
+    /** Recognize MIUI Chrome's website text fields even when WebView nodes are absent. */
     private fun findWebsiteCodeFields(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val dialogVisible = isCodeDialogVisible(root)
         val candidates = mutableListOf<AccessibilityNodeInfo>()
         val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Boolean>>()
         queue.add(root to false)
         var seen = 0
-        while (queue.isNotEmpty() && seen++ < 1500) {
+        while (queue.isNotEmpty() && seen++ < 1600) {
             val (n, withinWebView) = queue.removeFirst()
-            val className = n.className?.toString().orEmpty()
+            val type = n.className?.toString().orEmpty()
             val id = n.viewIdResourceName.orEmpty()
-            val inWebsite = withinWebView || className.contains("WebView", ignoreCase = true)
-            val chromeControl = id.startsWith("com.android.chrome:id/") ||
+            val inWeb = withinWebView || type.contains("WebView", ignoreCase = true)
+            val browserUi = id.startsWith("com.android.chrome:id/") ||
                 id.contains("url_bar", ignoreCase = true) ||
-                className.contains("Omnibox", ignoreCase = true)
-            if (inWebsite && !chromeControl && n.isVisibleToUser && n.isEnabled &&
-                n.isEditable && (className.contains("EditText") ||
-                    className.contains("input", ignoreCase = true))) {
-                candidates.add(n)
+                type.contains("Omnibox", ignoreCase = true)
+            val textInput = type.contains("EditText") || type.contains("input", true)
+            if (!browserUi && n.isVisibleToUser && n.isEnabled && n.isEditable &&
+                textInput && (inWeb || dialogVisible)) {
+                val rect = Rect()
+                n.getBoundsInScreen(rect)
+                if (!rect.isEmpty && rect.width() > 60 && rect.height() > 18) {
+                    candidates.add(n)
+                }
             }
-            for (i in 0 until n.childCount) {
-                n.getChild(i)?.let { queue.addLast(it to (inWebsite && !chromeControl)) }
+            if (!browserUi) for (i in 0 until n.childCount) {
+                n.getChild(i)?.let { queue.addLast(it to inWeb) }
             }
         }
         return candidates
@@ -454,6 +471,44 @@ class QuickOrderAccessibilityService : AccessibilityService() {
      * Do not use absolute screen coordinates: derive from the visible
      * WebView rectangle and refuse if it is not identified reliably.
      */
+
+    /** Exact button text from Chrome's accessibility tree, scoped by caller to code dialog. */
+    private fun findExactTextActions(
+        root: AccessibilityNodeInfo,
+        labels: List<String>
+    ): List<AccessibilityNodeInfo> {
+        val actions = mutableListOf<AccessibilityNodeInfo>()
+        val boundsSeen = mutableSetOf<String>()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var seen = 0
+        while (queue.isNotEmpty() && seen++ < 1600) {
+            val node = queue.removeFirst()
+            val id = node.viewIdResourceName.orEmpty()
+            if (!id.startsWith("com.android.chrome:id/") && node.isVisibleToUser) {
+                val label = node.text?.toString()?.trim().orEmpty()
+                val desc = node.contentDescription?.toString()?.trim().orEmpty()
+                if (labels.any { label.equals(it, true) || desc.equals(it, true) }) {
+                    var action = node
+                    var parent = node.parent
+                    var n = 0
+                    while (!action.isClickable && parent != null && n++ < 4) {
+                        action = parent
+                        parent = parent.parent
+                    }
+                    val rect = Rect()
+                    action.getBoundsInScreen(rect)
+                    if (action.isEnabled && !rect.isEmpty) {
+                        val key = "${rect.left}:${rect.top}:${rect.right}:${rect.bottom}"
+                        if (boundsSeen.add(key)) actions.add(action)
+                    }
+                }
+            }
+            for (i in 0 until node.childCount) node.getChild(i)?.let(queue::addLast)
+        }
+        return actions
+    }
+
     private fun tapTradingTabFromHomepage(root: AccessibilityNodeInfo) {
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
