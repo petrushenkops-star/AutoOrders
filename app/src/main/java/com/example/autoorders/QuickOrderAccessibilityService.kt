@@ -117,8 +117,19 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                     // Only one distinct visible website control is safe to press.
                     val buttons = findWebsiteActions(root, listOf("Торговля"))
                     when (buttons.size) {
-                        0 -> QuickOrderSession.message.value =
-                            "Не найдена вкладка «Торговля». Проверьте, что открыта главная страница сайта"
+                        0 -> {
+                            // The bottom nav is an icon-backed control on this
+                            // site's mobile homepage. Accessibility sometimes
+                            // omits its text, so use a *single* bounded tap
+                            // only after recognizing the homepage context.
+                            if (findText(root, "Популярное") != null &&
+                                findText(root, "Фьючерсные контракты") != null) {
+                                tapTradingTabFromHomepage(root)
+                            } else {
+                                QuickOrderSession.message.value =
+                                    "«Торговля» не распознана. Откройте главную страницу сайта: резервное касание доступно только там"
+                            }
+                        }
                         1 -> pressOnce(buttons.single(), QuickOrderSession.Step.OPEN_COPY,
                             "Нажата вкладка «Торговля», ищу форму кода")
                         else -> QuickOrderSession.message.value =
@@ -307,6 +318,73 @@ class QuickOrderAccessibilityService : AccessibilityService() {
             }
         }
         return result
+    }
+
+    /**
+     * Fallback for the site's icon-only mobile bottom navigation.
+     * The user video shows "Торговля" centered in the page bottom bar.
+     * Do not use absolute screen coordinates: derive from the visible
+     * WebView rectangle and refuse if it is not identified reliably.
+     */
+    private fun tapTradingTabFromHomepage(root: AccessibilityNodeInfo) {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var webRect: Rect? = null
+        var visited = 0
+        while (queue.isNotEmpty() && visited++ < 1600) {
+            val node = queue.removeFirst()
+            if (node.className?.toString()?.contains("WebView", ignoreCase = true) == true &&
+                node.isVisibleToUser) {
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                if (!rect.isEmpty && rect.width() > 180 && rect.height() > 280 &&
+                    (webRect == null || rect.width() * rect.height() >
+                        webRect.width() * webRect.height())) {
+                    webRect = rect
+                }
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let(queue::addLast)
+            }
+        }
+        val area = webRect
+        if (area == null) {
+            QuickOrderSession.message.value =
+                "Нижнее меню обнаружено на видео, но WebView не найден в дереве Android. Касание отменено"
+            return
+        }
+        // Mobile bottom nav occupies approximately the bottom 15% of
+        // page width in portrait; center tab is at 50% of page width.
+        val x = area.exactCenterX()
+        val y = area.bottom - area.width() * 0.15f
+        if (y < area.top + area.height() * 0.55f || y > area.bottom - 12f) {
+            QuickOrderSession.message.value =
+                "Положение нижнего меню не определено. Касание отменено"
+            return
+        }
+        gesturePending = true
+        val path = Path().apply { moveTo(x, y) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, 90L)).build()
+        val scheduled = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                gesturePending = false
+                if (QuickOrderSession.step == QuickOrderSession.Step.OPEN_TRADE) {
+                    move(QuickOrderSession.Step.OPEN_COPY,
+                        "Выполнено одно касание вкладки «Торговля». Проверяю следующую страницу")
+                }
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                gesturePending = false
+                QuickOrderSession.finish(
+                    "Android отменил касание «Торговля». Автоматический повтор запрещён.", false)
+            }
+        }, handler)
+        if (!scheduled) {
+            gesturePending = false
+            QuickOrderSession.finish(
+                "Android не разрешил касание «Торговля». Автоматический повтор запрещён.", false)
+        }
     }
 
     /**
