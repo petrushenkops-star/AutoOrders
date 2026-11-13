@@ -25,6 +25,7 @@ object QuickOrderSession {
     @Volatile var startedAt = 0L
     @Volatile var serviceConnected = false
     @Volatile var observedChromeEvents = 0
+    @Volatile var lastChromeStatus = "Chrome ещё не был обнаружен"
 
     fun begin(value: String) {
         code = value
@@ -106,16 +107,23 @@ class QuickOrderAccessibilityService : AccessibilityService() {
             return
         }
         if (root == null) {
-            val active = activeRoot?.packageName?.toString().orEmpty().ifEmpty { "нет" }
-            val connection = if (QuickOrderSession.serviceConnected) "подключена" else "не подключена"
+            val active = activeRoot?.packageName?.toString().orEmpty().ifEmpty { "не определено" }
             QuickOrderSession.message.value =
-                "Chrome не предоставил доступ к элементам страницы. " +
-                "Служба: $connection; активное окно: $active; " +
-                "окон Chrome: ${chromeWindowRoots.size}; событий: ${QuickOrderSession.observedChromeEvents}. " +
-                "Проверьте разрешение специальных возможностей."
+                if (active == "com.miui.home" || active == "com.android.launcher3" ||
+                    active == "com.google.android.apps.nexuslauncher") {
+                    "Автоматизация приостановлена: сейчас открыт домашний экран Android ($active). " +
+                    "Вернитесь в Chrome, оставьте сайт на экране. Последний шаг: " +
+                    QuickOrderSession.lastChromeStatus
+                } else {
+                    "Автоматизация ожидает Chrome. Активное окно: $active; " +
+                    "служба: ${if (QuickOrderSession.serviceConnected) "подключена" else "отключена"}; " +
+                    "окон Chrome: ${chromeWindowRoots.size}; событий Chrome: ${QuickOrderSession.observedChromeEvents}. " +
+                    "Последний шаг: " + QuickOrderSession.lastChromeStatus
+                }
             return
         }
         if (gesturePending || System.currentTimeMillis() - QuickOrderSession.lastActionAt < 1100) return
+        QuickOrderSession.lastChromeStatus = QuickOrderSession.message.value
         try {
             when (state) {
                 QuickOrderSession.Step.OPEN_TRADE -> {
@@ -229,6 +237,7 @@ class QuickOrderAccessibilityService : AccessibilityService() {
     private fun move(step: QuickOrderSession.Step, status: String) {
         QuickOrderSession.step = step
         QuickOrderSession.message.value = status
+        QuickOrderSession.lastChromeStatus = status
         QuickOrderSession.lastActionAt = System.currentTimeMillis()
     }
     private fun findText(root: AccessibilityNodeInfo, needle: String): AccessibilityNodeInfo? {
