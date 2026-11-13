@@ -29,10 +29,10 @@ object QuickOrderSession {
 
     fun begin(value: String) {
         code = value
-        step = Step.OPEN_TRADE
+        step = Step.OPEN_COPY
         lastActionAt = 0L
         startedAt = System.currentTimeMillis()
-        message.value = "Автоматизация запущена. Ищу вкладку «Торговля» в Chrome"
+        message.value = "Открываю торговый раздел BTC/USDT напрямую; ожидаю форму кода"
     }
     fun finish(text: String, success: Boolean) {
         code = ""
