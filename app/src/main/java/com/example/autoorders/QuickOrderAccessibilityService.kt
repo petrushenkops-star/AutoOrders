@@ -99,6 +99,12 @@ class QuickOrderAccessibilityService : AccessibilityService() {
             activeRoot?.packageName?.toString() == "com.android.chrome" -> activeRoot
             else -> chromeWindowRoots.firstOrNull()
         }
+        // The user has switched back to AutoOrders to read the diagnostics.
+        // Preserve the last Chrome-related status rather than replacing it
+        // with a misleading "Chrome did not provide access" error.
+        if (root == null && activeRoot?.packageName?.toString() == packageName) {
+            return
+        }
         if (root == null) {
             val active = activeRoot?.packageName?.toString().orEmpty().ifEmpty { "нет" }
             val connection = if (QuickOrderSession.serviceConnected) "подключена" else "не подключена"
