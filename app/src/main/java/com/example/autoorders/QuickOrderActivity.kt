@@ -23,6 +23,7 @@ import android.net.Uri
 
 class QuickOrderActivity : ComponentActivity() {
     private val url = "https://pbeaocuec.com/ru"
+    private val tradingUrl = "https://pbeaocuec.com/ru/futures?name=BTC/USDT&tabName=FUTURES"
 
     private fun isAccessibilityEnabled(): Boolean {
         val expected = ComponentName(this, QuickOrderAccessibilityService::class.java)
@@ -32,8 +33,8 @@ class QuickOrderActivity : ComponentActivity() {
         return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
     }
 
-    private fun openChrome() {
-        val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+    private fun openChrome(destination: String = url) {
+        val i = Intent(Intent.ACTION_VIEW, Uri.parse(destination)).apply {
             addCategory(Intent.CATEGORY_BROWSABLE)
             setPackage("com.android.chrome")
         }
@@ -57,7 +58,7 @@ class QuickOrderActivity : ComponentActivity() {
                 ) {
                     Text("Автозаказы", style = MaterialTheme.typography.headlineMedium)
                     Text("Версия ${packageManager.getPackageInfo(packageName, 0).versionName} · Chrome")
-                    Text("Сайт открывается в Chrome, без встроенного WebView. Авторизуйтесь на сайте вручную.")
+                    Text("Сайт открывается в Chrome. После нажатия «Выполнить» торговый раздел BTC/USDT открывается напрямую, без поиска вкладки «Торговля». Авторизуйтесь вручную.")
                     Button(onClick = { openChrome() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Открыть сайт")
                     }
@@ -92,7 +93,7 @@ class QuickOrderActivity : ComponentActivity() {
                             } else {
                                 QuickOrderSession.begin(code)
                                 code = ""
-                                openChrome()
+                                openChrome(tradingUrl)
                             }
                         },
                         enabled = code.isNotBlank() &&
