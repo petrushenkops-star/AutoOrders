@@ -151,19 +151,40 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                     }
                 }
                 QuickOrderSession.Step.OPEN_COPY -> {
-                    // The site may already be showing the code form: do not click
-                    // a second "quick copy" element, which might be an order action.
-                    if (findWebsiteCodeFields(root).size == 1) {
-                        move(QuickOrderSession.Step.ENTER_CODE, "Форма кода открыта")
+                    // The futures chart can contain unrelated editable fields.
+                    // Only skip this button if the code form is visibly identified.
+                    val codeFormVisible = findText(root, "Динамический пароль") != null ||
+                        findText(root, "Динамический код") != null
+                    if (codeFormVisible && findWebsiteCodeFields(root).size == 1) {
+                        move(QuickOrderSession.Step.ENTER_CODE, "Форма динамического кода открыта")
                     } else {
                         val buttons = findWebsiteActions(root, listOf("Быстрое копирование"))
                         when (buttons.size) {
-                            0 -> QuickOrderSession.message.value =
-                                "Не найдена кнопка перехода к форме кода в Chrome"
+                            0 -> {
+                                // Chrome's accessibility hierarchy occasionally does
+                                // not identify HTML text as a WebView descendant.
+                                // The fallback still uses the exact text's screen
+                                // bounds, and only on the BTC/USDT trading screen.
+                                val isTradingScreen = findText(root, "BTC/USDT") != null &&
+                                    findText(root, "Купить вниз") != null
+                                val label = if (isTradingScreen) {
+                                    findText(root, "Быстрое копирование")
+                                } else null
+                                val pageBounds = findWebViewBounds(root)
+                                if (label != null && pageBounds != null &&
+                                    isWithinPage(label, pageBounds)) {
+                                    pressOnce(label, QuickOrderSession.Step.ENTER_CODE,
+                                        "Нажата «Быстрое копирование» на странице BTC/USDT")
+                                } else {
+                                    QuickOrderSession.message.value =
+                                        "Кнопка «Быстрое копирование» не распознана в содержимом страницы BTC/USDT. " +
+                                        "Ожидаю доступную кнопку; случайные касания не выполняются."
+                                }
+                            }
                             1 -> pressOnce(buttons.single(), QuickOrderSession.Step.ENTER_CODE,
-                                "Нажата кнопка открытия формы")
+                                "Нажата «Быстрое копирование», ожидаю поле кода")
                             else -> QuickOrderSession.message.value =
-                                "Найдено несколько кнопок «Быстрое копирование». Нажатие отменено"
+                                "Несколько элементов «Быстрое копирование». Автонажатие отменено"
                         }
                     }
                 }
@@ -333,6 +354,36 @@ class QuickOrderAccessibilityService : AccessibilityService() {
             }
         }
         return result
+    }
+
+    /** Returns the visible website content rectangle, never the Chrome toolbar. */
+    private fun findWebViewBounds(root: AccessibilityNodeInfo): Rect? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var best: Rect? = null
+        var visited = 0
+        while (queue.isNotEmpty() && visited++ < 1600) {
+            val n = queue.removeFirst()
+            if (n.isVisibleToUser &&
+                n.className?.toString()?.contains("WebView", ignoreCase = true) == true) {
+                val b = Rect()
+                n.getBoundsInScreen(b)
+                if (!b.isEmpty && b.width() > 180 && b.height() > 280 &&
+                    (best == null || b.width() * b.height() > best.width() * best.height())) {
+                    best = b
+                }
+            }
+            for (i in 0 until n.childCount) n.getChild(i)?.let(queue::addLast)
+        }
+        return best
+    }
+
+    private fun isWithinPage(node: AccessibilityNodeInfo, page: Rect): Boolean {
+        if (!node.isVisibleToUser) return false
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        return !bounds.isEmpty && page.contains(bounds.centerX(), bounds.centerY()) &&
+            bounds.centerY() > page.top + 25
     }
 
     /**
