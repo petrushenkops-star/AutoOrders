@@ -9,6 +9,9 @@ import android.text.TextUtils
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,7 +52,7 @@ class QuickOrderActivity : ComponentActivity() {
                 var enabled by remember { mutableStateOf(isAccessibilityEnabled()) }
                 val status = QuickOrderSession.message.value
                 androidx.compose.foundation.layout.Column(
-                    modifier = Modifier.fillMaxSize().padding(20.dp),
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text("Автозаказы", style = MaterialTheme.typography.headlineMedium)
@@ -106,7 +109,16 @@ class QuickOrderActivity : ComponentActivity() {
                         onClick = { QuickOrderSession.cancel() },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Остановить") }
-                    Text(status, style = MaterialTheme.typography.bodyMedium)
+                    Text("Состояние автоматизации", style = MaterialTheme.typography.titleMedium)
+                    SelectionContainer {
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    Text("Прокрутите экран, чтобы увидеть сообщение полностью. Текст можно выделить и скопировать.",
+                        style = MaterialTheme.typography.bodySmall)
                     Text("Автоматизация не подтверждает финансовый заказ и не повторяет отправку кода при неизвестном результате.",
                         style = MaterialTheme.typography.bodySmall)
                 }
