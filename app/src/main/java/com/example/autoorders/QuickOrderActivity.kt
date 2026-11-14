@@ -94,6 +94,24 @@ class QuickOrderActivity : ComponentActivity() {
                     ) { Text("Проверить форму") }
                     Text("После открытия Chrome вручную нажмите «Быстрое копирование», затем вернитесь в приложение и прочитайте результат.",
                         style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(
+                        onClick = {
+                            if (!isAccessibilityEnabled()) {
+                                QuickOrderSession.message.value =
+                                    "Включите специальные возможности для проверки изображения."
+                            } else {
+                                QuickOrderSession.beginScreenCheck()
+                                openChrome(tradingUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Проверить изображение (OCR)") }
+                    Text(
+                        "Тест только для страницы с пустым полем пароля: вручную откройте «Быстрое копирование». " +
+                            "Снимок обрабатывается на телефоне, не сохраняется и не отправляется. " +
+                            "Для новых возможностей Android может потребоваться повторно включить службу.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     HorizontalDivider()
                     OutlinedTextField(
                         value = code, onValueChange = { if (it.length <= 24 && it.all(Char::isDigit)) code = it },
