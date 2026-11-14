@@ -78,6 +78,23 @@ class QuickOrderActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Проверить разрешение") }
                     HorizontalDivider()
+                    Text("Диагностика без кода", style = MaterialTheme.typography.titleMedium)
+                    Text("Проверка покажет, какие элементы формы доступны службе Chrome. Ввод пароля, нажатия и отправка отключены.")
+                    OutlinedButton(
+                        onClick = {
+                            if (!isAccessibilityEnabled()) {
+                                QuickOrderSession.message.value =
+                                    "Включите службу специальных возможностей для диагностики."
+                            } else {
+                                QuickOrderSession.beginDiagnostics()
+                                openChrome(tradingUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Проверить форму") }
+                    Text("После открытия Chrome вручную нажмите «Быстрое копирование», затем вернитесь в приложение и прочитайте результат.",
+                        style = MaterialTheme.typography.bodySmall)
+                    HorizontalDivider()
                     OutlinedTextField(
                         value = code, onValueChange = { if (it.length <= 24 && it.all(Char::isDigit)) code = it },
                         label = { Text("Динамический код") },
