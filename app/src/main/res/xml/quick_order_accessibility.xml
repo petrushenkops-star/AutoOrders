@@ -5,5 +5,6 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:notificationTimeout="150"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:description="@string/app_name" />
