@@ -24,10 +24,12 @@ object QuickOrderSession {
     @Volatile var lastActionAt = 0L
     @Volatile var startedAt = 0L
     @Volatile var serviceConnected = false
+    @Volatile var diagnosticsEnabled = false
     @Volatile var observedChromeEvents = 0
     @Volatile var lastChromeStatus = "Chrome ещё не был обнаружен"
 
     fun begin(value: String) {
+        diagnosticsEnabled = false
         code = value
         step = Step.OPEN_COPY
         lastActionAt = 0L
@@ -39,7 +41,14 @@ object QuickOrderSession {
         step = if (success) Step.DONE else Step.ERROR
         message.value = text
     }
+    fun beginDiagnostics() {
+        code = ""
+        step = Step.IDLE
+        diagnosticsEnabled = true
+        message.value = "Проверка включена. Откройте «Быстрое копирование» в Chrome вручную. Действия не выполняются."
+    }
     fun cancel() {
+        diagnosticsEnabled = false
         code = ""
         step = Step.IDLE
         message.value = "Остановлено"
@@ -82,6 +91,10 @@ class QuickOrderAccessibilityService : AccessibilityService() {
     }
 
     private fun tick() {
+        if (QuickOrderSession.diagnosticsEnabled) {
+            inspectChrome()
+            return
+        }
         val state = QuickOrderSession.step
         if (state == QuickOrderSession.Step.IDLE || state == QuickOrderSession.Step.DONE ||
             state == QuickOrderSession.Step.ERROR) return
@@ -267,6 +280,75 @@ class QuickOrderAccessibilityService : AccessibilityService() {
             QuickOrderSession.finish("Не удалось распознать страницу. Проверьте её вручную.", false)
         }
     }
+
+    /**
+     * Read-only accessibility diagnostics. Never examines text values of
+     * password inputs, performs clicks or stores credentials.
+     */
+    private fun inspectChrome() {
+        val active = rootInActiveWindow
+        val chrome = if (active?.packageName?.toString() == "com.android.chrome") {
+            active
+        } else {
+            windows.orEmpty().mapNotNull { it.root }
+                .firstOrNull { it.packageName?.toString() == "com.android.chrome" }
+        }
+        if (chrome == null) {
+            if (active?.packageName?.toString() == packageName) return
+            QuickOrderSession.message.value =
+                "Диагностика: ожидаю Chrome. Вернитесь на сайт, откройте форму вручную. " +
+                "Служба подключена: ${QuickOrderSession.serviceConnected}"
+            return
+        }
+
+        val hasFormTitle = findText(chrome, "Быстрое копирование") != null
+        val hasFieldLabel = findText(chrome, "Динамический пароль") != null
+        val sendButton = findText(chrome, "Отправлять")
+        val rootBounds = Rect().also { chrome.getBoundsInScreen(it) }
+        var editCandidates = 0
+        var setTextSupported = 0
+        var webNodes = 0
+        var totalNodes = 0
+        val q = ArrayDeque<AccessibilityNodeInfo>()
+        q.add(chrome)
+        while (q.isNotEmpty() && totalNodes < 1800) {
+            val node = q.removeFirst()
+            totalNodes++
+            val klass = node.className?.toString().orEmpty()
+            val id = node.viewIdResourceName.orEmpty()
+            if (klass.contains("WebView", true)) webNodes++
+            val browserBar = id.startsWith("com.android.chrome:id/") ||
+                id.contains("url_bar", true) || klass.contains("Omnibox", true)
+            val supportsSetText = node.actionList.any {
+                it.id == AccessibilityNodeInfo.ACTION_SET_TEXT
+            }
+            if (!browserBar && node.isVisibleToUser && node.isEnabled &&
+                (node.isEditable || supportsSetText)) {
+                val bounds = Rect().also { node.getBoundsInScreen(it) }
+                if (!bounds.isEmpty && bounds.width() > 60 &&
+                    bounds.centerY() > rootBounds.top + rootBounds.height() * 0.16f) {
+                    editCandidates++
+                    if (supportsSetText) setTextSupported++
+                }
+            }
+            if (!browserBar) for (i in 0 until node.childCount) {
+                node.getChild(i)?.let(q::addLast)
+            }
+        }
+
+        QuickOrderSession.message.value =
+            "Проверка формы (только чтение; код и пароль не считываются):\n" +
+            "Chrome: доступен\n" +
+            "Заголовок «Быстрое копирование»: ${if (hasFormTitle) "найден" else "не найден"}\n" +
+            "Надпись «Динамический пароль»: ${if (hasFieldLabel) "найдена" else "не найдена"}\n" +
+            "Доступных полей ввода: $editCandidates\n" +
+            "Из них поддерживают вставку текста: $setTextSupported\n" +
+            "Кнопка «Отправлять»: ${if (sendButton != null) "видна" else "не найдена"}\n" +
+            "Кнопка активна: ${sendButton?.isEnabled ?: false}\n" +
+            "WebView-узлов: $webNodes; проверено узлов: $totalNodes\n" +
+            "Никаких нажатий и отправок не выполнялось."
+    }
+
     private fun move(step: QuickOrderSession.Step, status: String) {
         QuickOrderSession.step = step
         QuickOrderSession.message.value = status
