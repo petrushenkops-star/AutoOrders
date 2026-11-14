@@ -320,22 +320,53 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         return null
     }
 
-    private fun inspectChrome() {
-        val active = rootInActiveWindow
-        val chrome = if (active?.packageName?.toString() == "com.android.chrome") {
-            active
-        } else {
-            windows.orEmpty().mapNotNull { it.root }
-                .firstOrNull { it.packageName?.toString() == "com.android.chrome" }
+    private fun diagnosticNodeCount(root: AccessibilityNodeInfo): Int {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var count = 0
+        while (queue.isNotEmpty() && count < 1800) {
+            val node = queue.removeFirst()
+            count++
+            for (i in 0 until node.childCount) node.getChild(i)?.let(queue::addLast)
         }
-        if (chrome == null) {
+        return count
+    }
+
+    /** Observe the most informative Chrome window; never cache password nodes. */
+    private fun inspectChrome() {
+        // Once the complete code form is observed, preserve its read-only
+        // snapshot for the user to inspect after returning to AutoOrders.
+        if (QuickOrderSession.diagnosticsCaptured) return
+
+        val active = rootInActiveWindow
+        val chromeRoots = mutableListOf<AccessibilityNodeInfo>()
+        if (active?.packageName?.toString() == "com.android.chrome") {
+            chromeRoots.add(active)
+        }
+        for (window in windows.orEmpty()) {
+            val root = window.root ?: continue
+            if (root.packageName?.toString() == "com.android.chrome" &&
+                chromeRoots.none { it.windowId == root.windowId &&
+                    it.childCount == root.childCount }) {
+                chromeRoots.add(root)
+            }
+        }
+        if (chromeRoots.isEmpty()) {
+            // Never overwrite the last Chrome observation when the user
+            // switches to AutoOrders or the launcher to view the report.
             if (active?.packageName?.toString() == packageName ||
-                QuickOrderSession.diagnosticsCaptured) return
+                active?.packageName?.toString() == "com.miui.home") return
             QuickOrderSession.message.value =
-                "Диагностика: ожидаю Chrome. Вернитесь на сайт, откройте форму вручную. " +
-                "Служба подключена: ${QuickOrderSession.serviceConnected}"
+                "Диагностика ожидает окно Chrome. Оставьте страницу «Быстрое копирование» на экране, " +
+                "затем вернитесь в приложение."
             return
         }
+
+        val chrome = chromeRoots.maxByOrNull { root ->
+            val labels = (if (findDiagnosticLabel(root, "Динамический пароль") != null) 10000 else 0) +
+                (if (findDiagnosticLabel(root, "Быстрое копирование") != null) 5000 else 0)
+            labels + diagnosticNodeCount(root)
+        } ?: return
 
         val hasFormTitle = findDiagnosticLabel(chrome, "Быстрое копирование") != null
         val hasFieldLabel = findDiagnosticLabel(chrome, "Динамический пароль") != null
@@ -345,10 +376,10 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         var setTextSupported = 0
         var webNodes = 0
         var totalNodes = 0
-        val q = ArrayDeque<AccessibilityNodeInfo>()
-        q.add(chrome)
-        while (q.isNotEmpty() && totalNodes < 1800) {
-            val node = q.removeFirst()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(chrome)
+        while (queue.isNotEmpty() && totalNodes < 1800) {
+            val node = queue.removeFirst()
             totalNodes++
             val klass = node.className?.toString().orEmpty()
             val id = node.viewIdResourceName.orEmpty()
@@ -368,21 +399,27 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                 }
             }
             if (!browserBar) for (i in 0 until node.childCount) {
-                node.getChild(i)?.let(q::addLast)
+                node.getChild(i)?.let(queue::addLast)
             }
         }
 
-        QuickOrderSession.diagnosticsCaptured = true
+        // Do not freeze a snapshot before the actual password form loads.
+        // Continue observing until the form header and password label appear.
+        val formObserved = hasFormTitle && hasFieldLabel
+        QuickOrderSession.diagnosticsCaptured = formObserved
         QuickOrderSession.message.value =
-            "Проверка формы (только чтение; код и пароль не считываются):\n" +
-            "Chrome: доступен\n" +
+            "Проверка формы — только чтение, пароль не считывается:\n" +
+            "Форма обнаружена: ${if (formObserved) "да" else "нет (ожидаю открытия)"}\n" +
+            "Chrome: доступен; найдено окон: ${chromeRoots.size}\n" +
             "Заголовок «Быстрое копирование»: ${if (hasFormTitle) "найден" else "не найден"}\n" +
             "Надпись «Динамический пароль»: ${if (hasFieldLabel) "найдена" else "не найдена"}\n" +
             "Доступных полей ввода: $editCandidates\n" +
-            "Из них поддерживают вставку текста: $setTextSupported\n" +
-            "Кнопка «Отправлять»: ${if (sendButton != null) "видна" else "не найдена"}\n" +
+            "Из них поддерживают вставку: $setTextSupported\n" +
+            "Кнопка «Отправлять»: ${if (sendButton != null) "найдена" else "не найдена"}\n" +
             "Кнопка активна: ${sendButton?.isEnabled ?: false}\n" +
             "WebView-узлов: $webNodes; проверено узлов: $totalNodes\n" +
+            "Событий Chrome: ${QuickOrderSession.observedChromeEvents}\n" +
+            "${if (formObserved) "Результат зафиксирован." else "Проверка продолжается, пока открыт Chrome."}\n" +
             "Никаких нажатий и отправок не выполнялось."
     }
 
