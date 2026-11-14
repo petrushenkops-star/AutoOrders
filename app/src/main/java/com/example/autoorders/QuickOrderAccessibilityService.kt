@@ -3,6 +3,12 @@ package com.example.autoorders
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.graphics.Bitmap
+import android.os.Build
+import android.view.Display
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityWindowInfo
 import android.os.Bundle
@@ -25,12 +31,15 @@ object QuickOrderSession {
     @Volatile var startedAt = 0L
     @Volatile var serviceConnected = false
     @Volatile var diagnosticsEnabled = false
+    @Volatile var screenCheckEnabled = false
+    @Volatile var screenCheckDone = false
     @Volatile var diagnosticsCaptured = false
     @Volatile var observedChromeEvents = 0
     @Volatile var lastChromeStatus = "Chrome ещё не был обнаружен"
 
     fun begin(value: String) {
         diagnosticsEnabled = false
+        screenCheckEnabled = false
         code = value
         step = Step.OPEN_COPY
         lastActionAt = 0L
@@ -43,13 +52,23 @@ object QuickOrderSession {
         message.value = text
     }
     fun beginDiagnostics() {
+        screenCheckEnabled = false
         code = ""
         step = Step.IDLE
         diagnosticsEnabled = true
         diagnosticsCaptured = false
         message.value = "Проверка включена. Откройте «Быстрое копирование» в Chrome вручную. Действия не выполняются."
     }
+    fun beginScreenCheck() {
+        code = ""
+        step = Step.IDLE
+        diagnosticsEnabled = false
+        screenCheckEnabled = true
+        screenCheckDone = false
+        message.value = "Проверка изображения запущена. Откройте форму в Chrome вручную. Снимки не сохраняются."
+    }
     fun cancel() {
+        screenCheckEnabled = false
         diagnosticsEnabled = false
         diagnosticsCaptured = false
         code = ""
@@ -62,6 +81,12 @@ class QuickOrderAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
     private var gesturePending = false
+    private var screenCheckPending = false
+    private var lastScreenCheckAt = 0L
+    private val screenRecognizerLazy = lazy {
+        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    }
+    private val screenRecognizer get() = screenRecognizerLazy.value
     private val poll = object : Runnable {
         override fun run() {
             if (!running) return
@@ -89,11 +114,16 @@ class QuickOrderAccessibilityService : AccessibilityService() {
         running = false
         QuickOrderSession.serviceConnected = false
         handler.removeCallbacksAndMessages(null)
+        if (screenRecognizerLazy.isInitialized()) screenRecognizerLazy.value.close()
         QuickOrderSession.cancel()
         super.onDestroy()
     }
 
     private fun tick() {
+        if (QuickOrderSession.screenCheckEnabled) {
+            runScreenCheck()
+            return
+        }
         if (QuickOrderSession.diagnosticsEnabled) {
             inspectChrome()
             return
@@ -318,6 +348,108 @@ class QuickOrderAccessibilityService : AccessibilityService() {
             }
         }
         return null
+    }
+
+    /**
+     * Opt-in screenshot check for MIUI Chrome when accessibility exposes only
+     * the browser shell (4 nodes). No buttons are pressed and no image or
+     * recognized text is saved or transmitted. Only boolean labels are shown.
+     */
+    private fun runScreenCheck() {
+        if (QuickOrderSession.screenCheckDone || screenCheckPending) return
+        val active = rootInActiveWindow
+        val chromeVisible = active?.packageName?.toString() == "com.android.chrome" ||
+            windows.orEmpty().any {
+                it.root?.packageName?.toString() == "com.android.chrome" && it.isActive
+            }
+        if (!chromeVisible) return
+        val now = System.currentTimeMillis()
+        if (now - lastScreenCheckAt < 3500L) return
+        lastScreenCheckAt = now
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            QuickOrderSession.message.value =
+                "Снимок экрана недоступен: требуется Android 11 или новее."
+            QuickOrderSession.screenCheckDone = true
+            return
+        }
+        screenCheckPending = true
+        try {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onFailure(errorCode: Int) {
+                    screenCheckPending = false
+                    QuickOrderSession.message.value =
+                        "Android запретил получение изображения экрана (код ошибки $errorCode). " +
+                            "Убедитесь, что служба специальных возможностей включена заново."
+                }
+                override fun onSuccess(result: ScreenshotResult) {
+                    var bitmap: Bitmap? = null
+                    try {
+                        val hardware = result.hardwareBuffer
+                        try {
+                            val wrapped = Bitmap.wrapHardwareBuffer(hardware, result.colorSpace)
+                            bitmap = wrapped?.copy(Bitmap.Config.ARGB_8888, false)
+                        } finally {
+                            hardware.close()
+                        }
+                        val image = bitmap ?: run {
+                            screenCheckPending = false
+                            QuickOrderSession.message.value = "Не удалось прочитать снимок Android."
+                            return
+                        }
+                        val width = image.width
+                        val height = image.height
+                        // ML Kit recognition is on-device. We inspect only
+                        // presence of labels, NEVER store raw or recognized text.
+                        screenRecognizer.process(InputImage.fromBitmap(image, 0))
+                            .addOnSuccessListener { detected ->
+                                if (!QuickOrderSession.screenCheckEnabled) return@addOnSuccessListener
+                                val labels = detected.textBlocks.flatMap { it.lines }.map { it.text }
+                                val header = labels.any {
+                                    it.contains("Быстрое", true) ||
+                                        it.contains("копирование", true)
+                                }
+                                val passwordLabel = labels.any {
+                                    it.contains("Динамический", true) ||
+                                        it.contains("пароль", true)
+                                }
+                                val submit = labels.any {
+                                    it.contains("Отправлять", true)
+                                }
+                                val ready = header && passwordLabel
+                                QuickOrderSession.screenCheckDone = ready
+                                QuickOrderSession.message.value =
+                                    "Проверка изображения (локально, без сохранения):\n" +
+                                        "Снимок Android: получен (${width}×${height})\n" +
+                                        "Текстовых строк OCR: ${labels.size}\n" +
+                                        "«Быстрое копирование»: ${if (header) "обнаружено" else "не обнаружено"}\n" +
+                                        "«Динамический пароль»: ${if (passwordLabel) "обнаружен" else "не обнаружен"}\n" +
+                                        "«Отправлять»: ${if (submit) "обнаружено" else "не обнаружено"}\n" +
+                                        "Распознавание кириллицы экспериментальное: отсутствие надписи не означает её отсутствия на экране.\n" +
+                                        "${if (ready) "Проверка завершена." else "Повторяю проверку, пока открыт Chrome."}\n" +
+                                        "Пароль не введён. Никаких нажатий и отправок не выполнялось."
+                            }
+                            .addOnFailureListener { e ->
+                                QuickOrderSession.message.value =
+                                    "Снимок получен, но локальное распознавание не запустилось: " +
+                                        e.javaClass.simpleName
+                            }
+                            .addOnCompleteListener {
+                                image.recycle()
+                                screenCheckPending = false
+                            }
+                    } catch (e: Exception) {
+                        bitmap?.recycle()
+                        screenCheckPending = false
+                        QuickOrderSession.message.value =
+                            "Ошибка обработки снимка: " + e.javaClass.simpleName
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            screenCheckPending = false
+            QuickOrderSession.message.value =
+                "Снимок экрана не разрешён Android: " + e.javaClass.simpleName
+        }
     }
 
     private fun diagnosticNodeCount(root: AccessibilityNodeInfo): Int {
