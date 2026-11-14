@@ -25,6 +25,7 @@ object QuickOrderSession {
     @Volatile var startedAt = 0L
     @Volatile var serviceConnected = false
     @Volatile var diagnosticsEnabled = false
+    @Volatile var diagnosticsCaptured = false
     @Volatile var observedChromeEvents = 0
     @Volatile var lastChromeStatus = "Chrome ещё не был обнаружен"
 
@@ -45,10 +46,12 @@ object QuickOrderSession {
         code = ""
         step = Step.IDLE
         diagnosticsEnabled = true
+        diagnosticsCaptured = false
         message.value = "Проверка включена. Откройте «Быстрое копирование» в Chrome вручную. Действия не выполняются."
     }
     fun cancel() {
         diagnosticsEnabled = false
+        diagnosticsCaptured = false
         code = ""
         step = Step.IDLE
         message.value = "Остановлено"
@@ -285,6 +288,38 @@ class QuickOrderAccessibilityService : AccessibilityService() {
      * Read-only accessibility diagnostics. Never examines text values of
      * password inputs, performs clicks or stores credentials.
      */
+    /** Only inspect static labels, never editable fields or their contents. */
+    private fun findDiagnosticLabel(
+        root: AccessibilityNodeInfo,
+        phrase: String
+    ): AccessibilityNodeInfo? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var n = 0
+        while (queue.isNotEmpty() && n++ < 1800) {
+            val node = queue.removeFirst()
+            val type = node.className?.toString().orEmpty()
+            val id = node.viewIdResourceName.orEmpty()
+            val chromeUi = id.startsWith("com.android.chrome:id/") ||
+                id.contains("url_bar", true) || type.contains("Omnibox", true)
+            if (!chromeUi) {
+                val editable = node.isEditable || node.actionList.any {
+                    it.id == AccessibilityNodeInfo.ACTION_SET_TEXT
+                }
+                if (node.isVisibleToUser && !editable) {
+                    val text = node.text?.toString().orEmpty()
+                    val description = node.contentDescription?.toString().orEmpty()
+                    if (text.contains(phrase, true) ||
+                        description.contains(phrase, true)) return node
+                }
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let(queue::addLast)
+                }
+            }
+        }
+        return null
+    }
+
     private fun inspectChrome() {
         val active = rootInActiveWindow
         val chrome = if (active?.packageName?.toString() == "com.android.chrome") {
@@ -294,16 +329,17 @@ class QuickOrderAccessibilityService : AccessibilityService() {
                 .firstOrNull { it.packageName?.toString() == "com.android.chrome" }
         }
         if (chrome == null) {
-            if (active?.packageName?.toString() == packageName) return
+            if (active?.packageName?.toString() == packageName ||
+                QuickOrderSession.diagnosticsCaptured) return
             QuickOrderSession.message.value =
                 "Диагностика: ожидаю Chrome. Вернитесь на сайт, откройте форму вручную. " +
                 "Служба подключена: ${QuickOrderSession.serviceConnected}"
             return
         }
 
-        val hasFormTitle = findText(chrome, "Быстрое копирование") != null
-        val hasFieldLabel = findText(chrome, "Динамический пароль") != null
-        val sendButton = findText(chrome, "Отправлять")
+        val hasFormTitle = findDiagnosticLabel(chrome, "Быстрое копирование") != null
+        val hasFieldLabel = findDiagnosticLabel(chrome, "Динамический пароль") != null
+        val sendButton = findDiagnosticLabel(chrome, "Отправлять")
         val rootBounds = Rect().also { chrome.getBoundsInScreen(it) }
         var editCandidates = 0
         var setTextSupported = 0
@@ -336,6 +372,7 @@ class QuickOrderAccessibilityService : AccessibilityService() {
             }
         }
 
+        QuickOrderSession.diagnosticsCaptured = true
         QuickOrderSession.message.value =
             "Проверка формы (только чтение; код и пароль не считываются):\n" +
             "Chrome: доступен\n" +
